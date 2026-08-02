@@ -1,4 +1,4 @@
-import { db } from '../db.js';
+import { db } from '../../../database/prisma/prisma.client.js';
 
 export class OrganizationRepository {
   async findById(id: string) {

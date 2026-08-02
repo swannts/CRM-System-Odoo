@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { extractPlatformRolesFromAuthHeader, getHighestPriorityRole } from '@mymanager/node-service-kit';
+import { AuthenticatedRequest } from '../interfaces/authenticated-request.js';
 
-export function identityMiddleware(req: Request, res: Response, next: NextFunction) {
+export function identityMiddleware(req: AuthenticatedRequest | Request, res: Response, next: NextFunction) {
   const orgId = req.header('X-Org-Id');
   const userId = req.header('X-User-Id');
   const authorization = req.header('Authorization');
@@ -19,16 +20,4 @@ export function identityMiddleware(req: Request, res: Response, next: NextFuncti
     platformRole: getHighestPriorityRole(platformRoles),
   };
   next();
-}
-
-export interface AuthenticatedRequest extends Request {
-  identity: {
-    orgId: string;
-    userId: string;
-    orgRole?: string | null;
-    membership?: any;
-    permissions?: string[];
-    platformRoles?: string[];
-    platformRole?: string | null;
-  };
 }

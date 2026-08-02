@@ -9,7 +9,7 @@ import {
   GoalService,
   HabitService,
 } from '../services/organization.service.js';
-import { AuthenticatedRequest } from '../middleware/identity.js';
+import { AuthenticatedRequest } from '../../../common/interfaces/authenticated-request.js';
 
 export class OrganizationController {
   private svc = new OrganizationService();

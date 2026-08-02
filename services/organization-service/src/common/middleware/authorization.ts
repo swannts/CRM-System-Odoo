@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
-import { AuthenticatedRequest } from './identity.js';
-import { MembershipService } from '../services/organization.service.js';
+import { AuthenticatedRequest } from '../interfaces/authenticated-request.js';
+import { MembershipService } from '../../modules/organization/services/organization.service.js';
 
 const svc = new MembershipService();
 

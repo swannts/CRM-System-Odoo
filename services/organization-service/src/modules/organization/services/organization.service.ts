@@ -751,8 +751,8 @@ export class MembershipService {
     return this.membershipRepo.create({
       organizationId: orgId,
       userId,
-      role: 'org_member',
-      permissions: DEFAULT_ROLE_PERMISSIONS.org_member,
+      role: 'org_staff',
+      permissions: DEFAULT_ROLE_PERMISSIONS.org_staff,
       metadata: { autoProvisioned: true },
     });
   }
