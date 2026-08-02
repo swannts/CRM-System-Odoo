@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { getRouteParam } from '../common/utils/route-param.js';
 import { 
   IntegrationConnectionService,
   GoogleIntegrationService,
@@ -20,10 +21,6 @@ import {
   OdooIntegrationService
 } from '../services/index.js';
 import { AuthenticatedRequest } from '../middleware/identity.js';
-
-function getRouteParam(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] || '' : value || '';
-}
 
 export class IntegrationController {
   private connSvc = new IntegrationConnectionService();
