@@ -1,7 +1,7 @@
 import { Response } from 'express';
 
-import { getRouteParam } from '../../../common/utils/route-param.js';
-import { AuthenticatedRequest } from '../../../middleware/identity.js';
+import { getRouteParam } from '../../../shared/utils/route-param.js';
+import { AuthenticatedRequest } from '../../../middleware/auth.middleware.js';
 import {
   GoogleIntegrationService,
   IntegrationConnectionService,

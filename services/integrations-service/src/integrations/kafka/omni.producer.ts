@@ -1,6 +1,6 @@
 import { connectKafkaProducerWithRetry, publishJson } from "@mymanager/node-service-kit";
-import { config } from "../config/index.js";
-import { OmniMessageReceivedEvent } from "../modules/integrations/index.js";
+import { config } from "../../config/index.js";
+import { OmniMessageReceivedEvent } from "../../modules/integrations/index.js";
 
 let producer: any = null;
 

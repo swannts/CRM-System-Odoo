@@ -20,7 +20,7 @@ import {
   WhatsAppController,
   ZoomController,
 } from '../modules/integrations/index.js';
-import { identityMiddleware } from '../middleware/identity.js';
+import { identityMiddleware } from '../middleware/auth.middleware.js';
 
 const auth = identityMiddleware;
 const cast = (req: any) => req as any;

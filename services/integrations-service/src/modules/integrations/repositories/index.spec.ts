@@ -1,8 +1,8 @@
 import { IntegrationConnectionRepository } from './index.js';
-import { db } from '../db.js';
+import { db } from '../../../database/prisma/prisma.client.js';
 import { encryptToken, decryptToken } from '@mymanager/node-service-kit';
 
-jest.mock('../db.js', () => ({
+jest.mock('../../../database/prisma/prisma.client.js', () => ({
   db: {
     integrationConnection: {
       create: jest.fn(),

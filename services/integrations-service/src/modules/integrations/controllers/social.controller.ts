@@ -1,6 +1,6 @@
 import { Response } from 'express';
 
-import { AuthenticatedRequest } from '../../../middleware/identity.js';
+import { AuthenticatedRequest } from '../../../middleware/auth.middleware.js';
 import {
   FacebookIntegrationService,
   InstagramIntegrationService,

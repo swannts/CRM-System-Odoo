@@ -2,7 +2,7 @@ import http from 'node:http';
 
 import { app, logger } from './app.js';
 import { config } from './config/index.js';
-import { startOmniSendConsumer } from './kafka/omni.send.consumer.js';
+import { startOmniSendConsumer } from './integrations/kafka/omni.send.consumer.js';
 
 const server = http.createServer(app);
 

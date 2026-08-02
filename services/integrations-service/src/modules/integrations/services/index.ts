@@ -34,7 +34,7 @@ import type {
   ,
   ImageAssetInput
 } from '../types/index.js';
-import { config } from '../config/index.js';
+import { config } from '../../../config/index.js';
 
 export class IntegrationConnectionService {
   private repo = new IntegrationConnectionRepository();
@@ -297,7 +297,7 @@ export class ShopifyIntegrationService {
   }
 }
 
-import type { Identity } from '../middleware/identity.js';
+import type { Identity } from '../../../middleware/auth.middleware.js';
 
 export class MagentoIntegrationService {
   private connRepo = new IntegrationConnectionRepository();
@@ -528,7 +528,7 @@ export class VoiceIntegrationService {
   }
 }
 
-import { emitOmniMessageReceived } from '../kafka/omni.producer.js';
+import { emitOmniMessageReceived } from '../../../integrations/kafka/omni.producer.js';
 
 export class WebhookService {
   private metaIntegrationService = new MetaIntegrationService();
