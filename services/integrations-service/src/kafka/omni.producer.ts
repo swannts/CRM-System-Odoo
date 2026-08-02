@@ -1,4 +1,5 @@
 import { connectKafkaProducerWithRetry, publishJson } from "@mymanager/node-service-kit";
+import { config } from "../config/index.js";
 import { OmniMessageReceivedEvent } from "../types/index.js";
 
 let producer: any = null;
@@ -8,7 +9,7 @@ export async function startOmniProducer(logger: any) {
 
   producer = await connectKafkaProducerWithRetry({
     clientId: "integrations-service-omni",
-    brokers: process.env.KAFKA_BROKERS,
+    brokers: config.kafkaBrokers,
     logger,
   });
 

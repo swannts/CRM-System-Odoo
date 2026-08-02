@@ -1,15 +1,14 @@
 import { startKafkaConsumer } from "@mymanager/node-service-kit";
 import { WhatsAppService, TelegramService } from "../services/index.js";
+import { config } from "../config/index.js";
 
 const waSvc = new WhatsAppService();
 const tgSvc = new TelegramService();
 
 export async function startOmniSendConsumer(logger: any) {
-  const brokers = process.env.KAFKA_BROKERS || "localhost:9092";
-  
   await startKafkaConsumer({
     clientId: "integrations-service-send",
-    brokers,
+    brokers: config.kafkaBrokers,
     groupId: "integrations-service.omni-send",
     topic: "omni.message.send",
     logger,

@@ -34,13 +34,7 @@ import type {
   ,
   ImageAssetInput
 } from '../types/index.js';
-
-const MAGENTO_SERVICE_URL = process.env.MAGENTO_INTEGRATION_SERVICE_URL;
-const ODOO_SERVICE_URL = process.env.ODOO_INTEGRATION_SERVICE_URL;
-
-if (!ODOO_SERVICE_URL) {
-  throw new Error('Missing ODOO_INTEGRATION_SERVICE_URL');
-}
+import { config } from '../config/index.js';
 
 export class IntegrationConnectionService {
   private repo = new IntegrationConnectionRepository();
@@ -309,10 +303,10 @@ export class MagentoIntegrationService {
   private connRepo = new IntegrationConnectionRepository();
 
   private async request(identity: Identity, path: string, method = 'GET', body?: any, query?: any) {
-    if (!MAGENTO_SERVICE_URL) {
+    if (!config.magentoServiceUrl) {
       throw new Error('Magento integration is disabled. Set MAGENTO_INTEGRATION_SERVICE_URL to enable it.');
     }
-    const url = new URL(`${MAGENTO_SERVICE_URL}${path}`);
+    const url = new URL(`${config.magentoServiceUrl}${path}`);
     if (query) {
       Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, String(v)));
     }
@@ -377,7 +371,11 @@ export class OdooIntegrationService {
   private connRepo = new IntegrationConnectionRepository();
 
   private async request(identity: Identity, path: string, method = 'GET', body?: any, query?: any) {
-    const url = new URL(`${ODOO_SERVICE_URL}${path}`);
+    if (!config.odooServiceUrl) {
+      throw new Error('Odoo integration is disabled. Set ODOO_INTEGRATION_SERVICE_URL to enable it.');
+    }
+
+    const url = new URL(`${config.odooServiceUrl}${path}`);
     if (query) {
       Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, String(v)));
     }
@@ -537,8 +535,7 @@ export class WebhookService {
   private telegramService = new TelegramService();
 
   async verifyMetaWebhook(mode: string, token: string, challenge: string) {
-    const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN || 'mymanager_token';
-    if (mode === 'subscribe' && token === verifyToken) {
+    if (mode === 'subscribe' && token === config.metaWebhookVerifyToken) {
       return challenge;
     }
     throw new Error('Verification failed');
