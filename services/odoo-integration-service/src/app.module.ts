@@ -12,7 +12,6 @@ import { PostsModule } from './modules/posts/posts.module.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { PosModule } from './modules/pos/pos.module.js';
 import { MagentoCompatibilityModule } from './modules/magento-compatibility/magento-compatibility.module.js';
-import { PrismaModule } from './common/prisma/prisma.module.js';
 import { EmployeesModule } from './modules/employees/employees.module.js';
 import { BookingModule } from './modules/booking/booking.module.js';
 import { OdooAdapterModule } from './modules/odoo-adapter/odoo-adapter.module.js';
@@ -23,10 +22,19 @@ import { HealthModule } from './modules/health/health.module.js';
 import { FormBuilderModule } from './modules/form-builder/form-builder.module.js';
 import { WebbuilderModule } from './modules/webbuilder/webbuilder.module.js';
 import { ReputationModule } from './modules/reputation/reputation.module.js';
+import { PrismaModule } from './database/prisma/prisma.module.js';
+import { configuration } from './config/configuration.js';
+import { databaseConfig } from './config/database.config.js';
+import { validateEnv } from './config/env.validation.js';
+import { jwtConfig } from './config/jwt.config.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration, databaseConfig, jwtConfig],
+      validate: validateEnv,
+    }),
     PrismaModule,
     ContactsModule,
     CrmModule,

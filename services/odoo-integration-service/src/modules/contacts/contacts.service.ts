@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { OdooClientService } from '../odoo-base/odoo-client.service.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { CreateContactDto, UpdateContactDto } from './dto/contact.dto.js';
-import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { parse } from 'csv-parse/sync';
 
 @Injectable()

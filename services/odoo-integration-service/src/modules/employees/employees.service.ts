@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { OdooClientService } from '../odoo-base/odoo-client.service.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
-import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { PrismaService } from '../../database/prisma/prisma.service.js';
 
 @Injectable()
 export class EmployeesService {

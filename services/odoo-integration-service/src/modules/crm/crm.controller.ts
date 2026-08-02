@@ -15,7 +15,7 @@ import { CrmService } from './crm.service.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { LeadEntity } from './entities/lead.entity.js';
 import { IdentityGuard } from '../../common/guards/identity.guard.js';
-import { parseOdooNumericId } from '../../common/parse-odoo-numeric-id.js';
+import { parseOdooNumericId } from '../../common/utils/parse-odoo-numeric-id.js';
 
 @ApiTags('CRM')
 @UseGuards(IdentityGuard)

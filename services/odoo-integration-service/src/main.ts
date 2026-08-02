@@ -4,29 +4,27 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { rateLimit } from 'express-rate-limit';
-import { randomUUID } from 'crypto';
+import { configuration } from './config/configuration.js';
+import { swaggerConfig } from './config/swagger.config.js';
+import { requestIdMiddleware } from './common/middleware/index.js';
 
 async function bootstrap() {
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  if (nodeEnv === 'production' && !process.env.ALLOWED_ORIGIN) {
+  const appConfig = configuration();
+  const nodeEnv = appConfig.nodeEnv;
+  if (nodeEnv === 'production' && !appConfig.allowedOrigin) {
     throw new Error('ALLOWED_ORIGIN must be set in production.');
   }
-  if (nodeEnv === 'production' && process.env.ALLOWED_ORIGIN === '*') {
+  if (nodeEnv === 'production' && appConfig.allowedOrigin === '*') {
     throw new Error('Wildcard CORS origin is not allowed in production.');
   }
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
-  app.use((req: any, res: any, next: any) => {
-    const requestId = req.headers['x-request-id'] || randomUUID();
-    req.requestId = requestId;
-    res.setHeader('x-request-id', String(requestId));
-    next();
-  });
+  app.use(requestIdMiddleware);
 
   const corsOrigin =
     nodeEnv === 'production'
-      ? (process.env.ALLOWED_ORIGIN || '').split(',').map((item) => item.trim()).filter(Boolean)
-      : process.env.ALLOWED_ORIGIN || '*';
+      ? appConfig.allowedOrigin.split(',').map((item) => item.trim()).filter(Boolean)
+      : appConfig.allowedOrigin;
 
   app.enableCors({
     origin: corsOrigin,
@@ -53,18 +51,18 @@ async function bootstrap() {
     }),
   );
   app.useGlobalFilters(new GlobalExceptionFilter());
-  app.setGlobalPrefix('v1/odoo');
+  app.setGlobalPrefix(appConfig.apiPrefix);
 
   const config = new DocumentBuilder()
-    .setTitle('Odoo Integration Service')
-    .setDescription('Industrial Odoo API for MyManager')
-    .setVersion('1.0')
+    .setTitle(swaggerConfig.title)
+    .setDescription(swaggerConfig.description)
+    .setVersion(swaggerConfig.version)
     .addApiKey({ type: 'apiKey', name: 'x-user-id', in: 'header' }, 'x-user-id')
     .addApiKey({ type: 'apiKey', name: 'x-org-id', in: 'header' }, 'x-org-id')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
-  await app.listen(process.env.PORT || 7200, '0.0.0.0');
+  await app.listen(appConfig.port, '0.0.0.0');
 }
 bootstrap();

@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { OdooClientService } from '../odoo-base/odoo-client.service.js';
 
 type EvaluatedMetric = {

@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { parseOdooNumericId } from '../../common/parse-odoo-numeric-id';
+import { parseOdooNumericId } from '../../common/utils/parse-odoo-numeric-id';
 import { CrmController } from './crm.controller';
 import { CrmService } from './crm.service';
 
