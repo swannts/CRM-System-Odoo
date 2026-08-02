@@ -1,5 +1,5 @@
-import { prisma } from "../lib/prisma.js";
-import { MailService } from "./mail.service.js";
+import { prisma } from "../../database/prisma/prisma.client.js";
+import { MailService } from "../../integrations/email/mail.service.js";
 
 const defaultMailService = new MailService();
 

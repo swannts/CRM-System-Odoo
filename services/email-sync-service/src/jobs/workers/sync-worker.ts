@@ -1,6 +1,6 @@
-import { config } from "../config/env.js";
-import { EmailSyncService } from "../services/email-sync.service.js";
-import { SequenceService } from "../services/sequence.service.js";
+import { config } from "../../config/env.js";
+import { EmailSyncService } from "../../modules/email-sync/email-sync.service.js";
+import { SequenceService } from "../../modules/sequences/sequence.service.js";
 
 const sequenceService = new SequenceService();
 const emailSyncService = new EmailSyncService();

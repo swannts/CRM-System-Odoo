@@ -1,7 +1,7 @@
-import { prisma } from "../lib/prisma.js";
-import { decrypt, encrypt } from "../lib/encryption.js";
-import { GoogleAuthService } from "./google-auth.service.js";
-import { OutlookAuthService } from "./outlook-auth.service.js";
+import { prisma } from "../../database/prisma/prisma.client.js";
+import { decrypt, encrypt } from "../../shared/utils/encryption.js";
+import { GoogleAuthService } from "../../integrations/email/google-auth.service.js";
+import { OutlookAuthService } from "../../integrations/email/outlook-auth.service.js";
 
 const googleAuth = new GoogleAuthService();
 const outlookAuth = new OutlookAuthService();

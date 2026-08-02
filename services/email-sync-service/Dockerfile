@@ -24,4 +24,4 @@ ENV PORT=7160
 EXPOSE 7160
 
 # Run database migrations and start service
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]

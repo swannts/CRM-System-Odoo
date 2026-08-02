@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EmailSyncService } from "./email-sync.service.js";
-import { MailService } from "./mail.service.js";
-import { GoogleAuthService } from "./google-auth.service.js";
-import { OutlookAuthService } from "./outlook-auth.service.js";
+import { EmailSyncService } from "../../src/modules/email-sync/email-sync.service.js";
+import { MailService } from "../../src/integrations/email/mail.service.js";
+import { GoogleAuthService } from "../../src/integrations/email/google-auth.service.js";
+import { OutlookAuthService } from "../../src/integrations/email/outlook-auth.service.js";
 
 test("MailService scopes account by orgId + userId", async () => {
   let capturedWhere: any;

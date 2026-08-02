@@ -32,4 +32,4 @@ RUN if [ -d prisma ]; then npx prisma@6.3.0 generate; fi
 
 EXPOSE ${SERVICE_PORT}
 
-CMD ["sh", "-c", "corepack yarn exec tsx src/index.ts"]
+CMD ["sh", "-c", "corepack yarn exec tsx src/server.ts"]

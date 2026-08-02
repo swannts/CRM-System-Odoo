@@ -2,16 +2,16 @@
   "name": "@mymanager/email-sync-service",
   "version": "1.0.0",
   "description": "Email Synchronization Service for Gmail and Outlook",
-  "main": "src/index.ts",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/server.js",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
     "@mymanager/node-service-kit": "file:../../common/node-service-kit",

@@ -1,24 +1,25 @@
 import { Router } from "express";
-import { requireIdentityContext } from "@mymanager/node-service-kit";
 
-import { GoogleAuthService } from "../services/google-auth.service.js";
-
-import { prisma } from "../lib/prisma.js";
-
-import { encrypt } from "../lib/encryption.js";
-import { OutlookAuthService } from "../services/outlook-auth.service.js";
-import { EmailSyncService } from "../services/email-sync.service.js";
+import { requireIdentityMiddleware } from "../../middleware/auth.middleware.js";
+import { encrypt } from "../../shared/utils/encryption.js";
+import { GoogleAuthService } from "../../integrations/email/google-auth.service.js";
+import { OutlookAuthService } from "../../integrations/email/outlook-auth.service.js";
+import { MailService } from "../../integrations/email/mail.service.js";
+import { EmailSyncService } from "./email-sync.service.js";
+import { EmailSyncRepository } from "./email-sync.repository.js";
+import { EMAIL_PROVIDERS } from "./email-sync.constants.js";
+import { SequenceService } from "../sequences/sequence.service.js";
 
 const router = Router();
-// @ts-ignore - temporary fix for missing type declarations
-const identityMiddleware = (req: any, res: any, next: any) =>
-  requireIdentityContext(req, res, next);
 const googleAuthService = new GoogleAuthService();
 const outlookAuthService = new OutlookAuthService();
 const emailSyncService = new EmailSyncService();
+const emailSyncRepository = new EmailSyncRepository();
+const mailService = new MailService();
+const sequenceService = new SequenceService();
 
 // All routes require identity context
-router.use(identityMiddleware);
+router.use(requireIdentityMiddleware);
 
 // GET /email/accounts - List connected email accounts
 router.get("/accounts", async (req: any, res, next) => {
@@ -26,20 +27,7 @@ router.get("/accounts", async (req: any, res, next) => {
     const orgId = req.identity!.orgId;
     const userId = req.identity!.userId;
 
-    const accounts = await prisma.emailAccount.findMany({
-      where: { orgId, userId },
-      select: {
-        id: true,
-        email: true,
-        provider: true,
-        isConnected: true,
-        lastSyncAt: true,
-        syncStatus: true,
-        createdAt: true,
-        errorMessage: true,
-        settings: true,
-      },
-    });
+    const accounts = await emailSyncRepository.listAccounts({ orgId, userId });
 
     return res.json({
       success: true,
@@ -58,7 +46,7 @@ router.post("/accounts/connect", async (req: any, res, next) => {
     const orgId = req.identity!.orgId;
     const userId = req.identity!.userId;
 
-    if (!provider || !["gmail", "outlook"].includes(provider)) {
+    if (!provider || !EMAIL_PROVIDERS.includes(provider)) {
       return res.status(400).json({
         success: false,
         error: "Provider must be gmail or outlook",
@@ -140,27 +128,14 @@ router.get("/callback", async (req, res, next) => {
     const encryptedAccessToken = encrypt(accessToken);
     const encryptedRefreshToken = refreshToken ? encrypt(refreshToken) : undefined;
 
-    // Upsert EmailAccount
-    const account = await prisma.emailAccount.upsert({
-      where: { orgId_userId_provider_email: { orgId, userId, provider, email } },
-      update: {
-        isConnected: true,
-        accessToken: encryptedAccessToken,
-        ...(encryptedRefreshToken && { refreshToken: encryptedRefreshToken }),
-        ...(expiresAt && { expiresAt }),
-        syncStatus: "idle",
-      },
-      create: {
-        orgId,
-        userId,
-        email,
-        provider,
-        isConnected: true,
-        accessToken: encryptedAccessToken,
-        refreshToken: encryptedRefreshToken,
-        expiresAt,
-        syncStatus: "idle",
-      },
+    const account = await emailSyncRepository.upsertConnectedAccount({
+      orgId,
+      userId,
+      email,
+      provider,
+      accessToken: encryptedAccessToken,
+      refreshToken: encryptedRefreshToken,
+      expiresAt,
     });
 
     return res.json({
@@ -203,65 +178,19 @@ router.get("/messages", async (req: any, res, next) => {
     const orgId = req.identity!.orgId;
     const userId = req.identity!.userId;
 
-    const ownedAccounts = await prisma.emailAccount.findMany({
-      where: { orgId, userId },
-      select: { id: true },
-    });
+    const ownedAccounts = await emailSyncRepository.listOwnedAccountIds({ orgId, userId });
     const ownedAccountIds = new Set(ownedAccounts.map((a) => a.id));
 
-    const where: any = { orgId, accountId: { in: [...ownedAccountIds] } };
-    
     if (accountId) {
       if (!ownedAccountIds.has(String(accountId))) {
         return res.status(404).json({ success: false, error: "Email account not found" });
       }
-      where.accountId = accountId;
     }
-    if (threadId) where.threadId = threadId;
-    
-    if (search) {
-      where.OR = [
-        { subject: { contains: search, mode: 'insensitive' } },
-        { fromEmail: { contains: search, mode: 'insensitive' } },
-        { fromName: { contains: search, mode: 'insensitive' } },
-        { textBody: { contains: search, mode: 'insensitive' } }
-      ];
-    }
-    
-    if (folder === 'sent') {
-      where.direction = 'outbound';
-    } else if (folder === 'inbox') {
-      where.direction = 'inbound';
-    }
-
-    const take = parseInt(limit as string) || 50;
-    const skip = parseInt(offset as string) || 0;
-
-    const [messages, total] = await Promise.all([
-      prisma.email.findMany({
-        where,
-        orderBy: { sentAt: 'desc' },
-        take,
-        skip,
-        select: {
-          id: true,
-          accountId: true,
-          threadId: true,
-          subject: true,
-          fromName: true,
-          fromEmail: true,
-          toEmails: true,
-          snippet: true,
-          hasAttachments: true,
-          isRead: true,
-          isImportant: true,
-          direction: true,
-          sentAt: true,
-          labels: true
-        }
-      }),
-      prisma.email.count({ where })
-    ]);
+    const { messages, total, take, skip } = await emailSyncRepository.listMessages(
+      { orgId, userId },
+      { accountId, search, limit, offset, threadId, folder },
+      [...ownedAccountIds],
+    );
 
     return res.json({
       success: true,
@@ -313,14 +242,6 @@ router.get("/sync/status", async (req: any, res, next) => {
   }
 });
 
-import { MailService } from "../services/mail.service.js";
-import { SequenceService } from "../services/sequence.service.js";
-
-const mailService = new MailService();
-const sequenceService = new SequenceService();
-
-// ... existing code ...
-
 // POST /email/send - Send an email
 router.post("/send", async (req: any, res, next) => {
   try {
@@ -368,15 +289,7 @@ router.get("/templates", async (req: any, res, next) => {
     const { category } = req.query;
     const orgId = req.identity!.orgId;
 
-    const where: any = { orgId };
-    if (category) {
-      where.category = category;
-    }
-
-    const templates = await prisma.emailTemplate.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
-    });
+    const templates = await emailSyncRepository.listTemplates(orgId, category ? String(category) : undefined);
 
     return res.json({
       success: true,
@@ -414,16 +327,14 @@ router.post("/templates", async (req: any, res, next) => {
       variables.add(match[1]);
     }
 
-    const template = await prisma.emailTemplate.create({
-      data: {
-        orgId,
-        createdBy: userId,
-        name,
-        subject,
-        body,
-        category,
-        variables: Array.from(variables),
-      },
+    const template = await emailSyncRepository.createTemplate({
+      orgId,
+      userId,
+      name,
+      subject,
+      body,
+      category,
+      variables: Array.from(variables),
     });
 
     res.status(201).json({

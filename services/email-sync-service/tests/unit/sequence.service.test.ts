@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SequenceService } from "./sequence.service.js";
+import { SequenceService } from "../../src/modules/sequences/sequence.service.js";
 
 test("enroll creates enrollment and schedules first step", async () => {
   const calls: any = { activityCreate: 0 };

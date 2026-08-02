@@ -123,8 +123,8 @@ if [ -f "$SCHEMA" ]; then
 fi
 
 cd "$WORKSPACE_DIR/services/${SERVICE_NAME}"
-if [ -f src/index.ts ]; then
-  exec "$WORKSPACE_DIR/node_modules/.bin/tsx" src/index.ts
+if [ -f src/server.ts ]; then
+  exec "$WORKSPACE_DIR/node_modules/.bin/tsx" src/server.ts
 fi
 
 exec corepack yarn dev
