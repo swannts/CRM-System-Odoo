@@ -1,7 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchSocialAccountsThunk, 
+  selectSocial 
+} from 'src/store/slices/social-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -12,18 +16,19 @@ import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
-
-import { socialService } from 'src/services/social-service';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function SocialAccounts() {
-  const { data: accounts } = useQuery({
-    queryKey: ['social-accounts'],
-    queryFn: () => socialService.getAccounts(),
-  });
+  const dispatch = useAppDispatch();
+  const { accounts } = useAppSelector(selectSocial);
+
+  useEffect(() => {
+    dispatch(fetchSocialAccountsThunk());
+  }, [dispatch]);
 
   const platforms = [
     { id: 'facebook', name: 'Facebook', icon: 'logos:facebook', color: '#1877F2' },
@@ -32,10 +37,17 @@ export function SocialAccounts() {
     { id: 'linkedin', name: 'LinkedIn', icon: 'logos:linkedin-icon', color: '#0A66C2' },
   ];
 
+  const accountsList = accounts.data || [];
+  const isLoading = accounts.loading;
+
+  if (isLoading && !accountsList.length) {
+    return <CircularProgress />;
+  }
+
   return (
     <Grid container spacing={3}>
       {platforms.map((platform) => {
-        const connectedAccount = (accounts || []).find((acc: any) => acc.platform === platform.id);
+        const connectedAccount = accountsList.find((acc: any) => acc.platform === platform.id);
         return (
           <Grid item xs={12} sm={6} md={3} key={platform.id}>
             <Card sx={{ p: 3, textAlign: 'center' }}>

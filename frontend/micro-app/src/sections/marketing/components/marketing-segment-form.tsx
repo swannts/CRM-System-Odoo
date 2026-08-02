@@ -23,9 +23,11 @@ export const SegmentSchema = zod.object({
   primaryFilter: zod.string().optional(),
 });
 
+export type SegmentData = zod.infer<typeof SegmentSchema>;
+
 type Props = {
   segment?: MarketingSegment;
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: SegmentData) => Promise<void>;
   onCancel: () => void;
 };
 

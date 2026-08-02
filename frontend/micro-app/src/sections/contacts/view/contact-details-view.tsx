@@ -1,7 +1,27 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchContactById,
+  fetchContactPets,
+  fetchContactFiles,
+  fetchContactTasks,
+  fetchContactActivities,
+  fetchContactShifts,
+  fetchContactOrders,
+  fetchContactProjects,
+  updateContactThunk,
+  clockInThunk,
+  clockOutThunk,
+  createPetThunk,
+  createFileThunk,
+  createTaskThunk,
+  createActivityThunk,
+  selectContacts,
+} from 'src/store/slices/contact-slice';
+import { fetchContactScore, selectScoring } from 'src/store/slices/scoring-slice';
+import { fetchBillingInvoices, selectBilling } from 'src/store/slices/billing-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -29,9 +49,6 @@ import { useRouter } from 'src/routes/hooks';
 import { useContactRealtime } from 'src/hooks/use-contact-realtime';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { contactService } from 'src/services/contact-service';
-import { billingService } from 'src/services/billing-service';
-import { scoringService } from 'src/services/scoring-service';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -57,8 +74,8 @@ type Props = {
 };
 
 export function ContactDetailsView({ id, mode = 'overview' }: Props) {
+  const dispatch = useAppDispatch();
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   const [currentTab, setCurrentTab] = useState(mode);
   const [editOpen, setEditOpen] = useState(false);
@@ -72,85 +89,75 @@ export function ContactDetailsView({ id, mode = 'overview' }: Props) {
 
   const { activeUsers, notifyUpdate } = useContactRealtime(id, 'org-123'); // Org ID should be dynamic
 
-  const { data: contact, isLoading: contactLoading, refetch: refetchContact } = useQuery({
-    queryKey: ['contact', id],
-    queryFn: () => contactService.getContact(id),
-    staleTime: 60 * 1000,
-  });
-  const { data: contactScore } = useQuery({
-    queryKey: ['contact-score', id],
-    queryFn: () => scoringService.getContactScore(id),
-    staleTime: 30 * 1000,
-  });
+  const contactState = useAppSelector(selectContacts);
+  const scoringState = useAppSelector(selectScoring);
+  const billingState = useAppSelector(selectBilling);
+
+  const contact = contactState.currentContact.data;
+  const contactLoading = contactState.currentContact.loading;
+  const contactScore = scoringState.contactScores[id]?.data;
 
   const [invoicesPage, setInvoicesPage] = useState(0);
   const [invoicesPageSize, setInvoicesPageSize] = useState(5);
 
-  const { data: invoices, isLoading: invoicesLoading } = useQuery({
-    queryKey: ['contact-invoices', id, invoicesPage, invoicesPageSize],
-    queryFn: () => billingService.getInvoices({ 
-      contactId: id, 
-      page: invoicesPage + 1, 
-      pageSize: invoicesPageSize 
-    }),
-    enabled: currentTab === 'billing' || currentTab === 'invoices',
-    staleTime: 60 * 1000,
-  });
+  const invoices = billingState.invoices;
+  const invoicesLoading = billingState.invoices.loading;
 
-  const { data: odooOrders, isLoading: ordersLoading } = useQuery({
-    queryKey: ['contact-odoo-orders', id],
-    queryFn: () => contactService.getOrders(id),
-    enabled: currentTab === 'commerce',
-    staleTime: 60 * 1000,
-  });
+  const odooOrders = contactState.currentContact.orders;
+  const ordersLoading = false; // Add orders loading if needed
 
-  const { data: odooProjects, isLoading: projectsLoading } = useQuery({
-    queryKey: ['contact-odoo-projects', id],
-    queryFn: () => contactService.getProjects(id),
-    enabled: currentTab === 'projects',
-    staleTime: 60 * 1000,
-  });
+  const odooProjects = contactState.currentContact.projects;
+  const projectsLoading = false;
 
-  const { data: pets, isLoading: petsLoading, refetch: refetchPets } = useQuery({
-    queryKey: ['contact-pets', id],
-    queryFn: () => contactService.getPets(id),
-    enabled: currentTab === 'pets',
-    staleTime: 60 * 1000,
-  });
+  const pets = contactState.currentContact.pets;
+  const petsLoading = false;
 
-  const { data: files, isLoading: filesLoading, refetch: refetchFiles } = useQuery({
-    queryKey: ['contact-files', id],
-    queryFn: () => contactService.getFiles(id),
-    enabled: currentTab === 'files',
-    staleTime: 60 * 1000,
-  });
+  const files = contactState.currentContact.files;
+  const filesLoading = false;
 
-  const { data: tasks, isLoading: tasksLoading, refetch: refetchTasks } = useQuery({
-    queryKey: ['contact-tasks', id],
-    queryFn: () => contactService.getTasks(id),
-    enabled: currentTab === 'tasks',
-    staleTime: 60 * 1000,
-  });
+  const tasks = contactState.currentContact.tasks;
+  const tasksLoading = false;
 
-  const { data: activities, isLoading: activitiesLoading, refetch: refetchActivities } = useQuery({
-    queryKey: ['contact-activities', id],
-    queryFn: () => contactService.getActivities(id),
-    enabled: currentTab === 'activity',
-    staleTime: 60 * 1000,
-  });
+  const activities = contactState.currentContact.activities;
+  const activitiesLoading = false;
 
   const [shiftsPage, setShiftsPage] = useState(0);
   const [shiftsPageSize, setShiftsPageSize] = useState(5);
 
-  const { data: shifts, isLoading: shiftsLoading, refetch: refetchShifts } = useQuery({
-    queryKey: ['contact-shifts', id, shiftsPage, shiftsPageSize],
-    queryFn: () => contactService.getShifts(id, { 
-      page: shiftsPage + 1, 
-      pageSize: shiftsPageSize 
-    }),
-    enabled: currentTab === 'work-history',
-    staleTime: 60 * 1000,
-  });
+  const shifts = contactState.currentContact.shifts;
+  const shiftsLoading = contactState.currentContact.shifts.loading;
+
+  useEffect(() => {
+    dispatch(fetchContactById(id));
+    dispatch(fetchContactScore(id));
+  }, [dispatch, id]);
+
+  useEffect(() => {
+    if (currentTab === 'billing' || currentTab === 'invoices') {
+      dispatch(fetchBillingInvoices({ contactId: id, page: invoicesPage + 1, pageSize: invoicesPageSize }));
+    }
+    if (currentTab === 'commerce') {
+      dispatch(fetchContactOrders(id));
+    }
+    if (currentTab === 'projects') {
+      dispatch(fetchContactProjects(id));
+    }
+    if (currentTab === 'pets') {
+      dispatch(fetchContactPets(id));
+    }
+    if (currentTab === 'files') {
+      dispatch(fetchContactFiles(id));
+    }
+    if (currentTab === 'tasks') {
+      dispatch(fetchContactTasks(id));
+    }
+    if (currentTab === 'activity') {
+      dispatch(fetchContactActivities(id));
+    }
+    if (currentTab === 'work-history') {
+      dispatch(fetchContactShifts({ id, params: { page: shiftsPage + 1, pageSize: shiftsPageSize } }));
+    }
+  }, [dispatch, id, currentTab, invoicesPage, invoicesPageSize, shiftsPage, shiftsPageSize]);
 
   useEffect(() => {
     setCurrentTab(mode);
@@ -184,16 +191,36 @@ export function ContactDetailsView({ id, mode = 'overview' }: Props) {
   const handleSaveContact = async () => {
     try {
       setIsSaving(true);
-      await contactService.updateContact(id, editValues);
+      await dispatch(updateContactThunk({ id, data: editValues })).unwrap();
       notifyUpdate(editValues);
-      await refetchContact();
+      dispatch(fetchContactById(id));
       setEditOpen(false);
       showToast({ message: 'Contact updated successfully.', severity: 'success' });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update contact';
+      const message = typeof error === 'string' ? error : 'Failed to update contact';
       showToast({ message, severity: 'warning' });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleClockIn = async () => {
+    try {
+      await dispatch(clockInThunk(id)).unwrap();
+      dispatch(fetchContactShifts({ id, params: { page: shiftsPage + 1, pageSize: shiftsPageSize } }));
+      showToast({ message: 'Clocked in successfully' });
+    } catch (error) {
+      showToast({ message: typeof error === 'string' ? error : 'Failed to clock in', severity: 'warning' });
+    }
+  };
+
+  const handleClockOut = async (shiftId: string) => {
+    try {
+      await dispatch(clockOutThunk(shiftId)).unwrap();
+      dispatch(fetchContactShifts({ id, params: { page: shiftsPage + 1, pageSize: shiftsPageSize } }));
+      showToast({ message: 'Clocked out successfully' });
+    } catch (error) {
+      showToast({ message: typeof error === 'string' ? error : 'Failed to clock out', severity: 'warning' });
     }
   };
 
@@ -228,15 +255,14 @@ export function ContactDetailsView({ id, mode = 'overview' }: Props) {
           />
         );
       case 'pets':
-        return <ContactPetsTab pets={pets} loading={petsLoading} refetch={refetchPets} contactId={id} />;
+        return <ContactPetsTab pets={pets} loading={petsLoading} contactId={id} />;
       case 'files':
-        return <ContactFilesTab files={files} loading={filesLoading} refetch={refetchFiles} contactId={id} />;
+        return <ContactFilesTab files={files} loading={filesLoading} contactId={id} />;
       case 'activity':
         return (
           <ContactTimeline 
             activities={activities} 
             loading={activitiesLoading} 
-            refetch={refetchActivities}
             contactId={id}
           />
         );
@@ -245,69 +271,9 @@ export function ContactDetailsView({ id, mode = 'overview' }: Props) {
       case 'projects':
         return <ContactProjectsTab projects={odooProjects} loading={projectsLoading} />;
       case 'tasks':
-        return <TasksTab tasks={tasks} loading={tasksLoading} refetch={refetchTasks} contactId={id} />;
+        return <TasksTab tasks={tasks} loading={tasksLoading} contactId={id} />;
       default:
         return <ContactOverviewTab contact={contact} />;
-    }
-  };
-
-  const handleAddPet = async () => {
-    try {
-      await contactService.createPet(id, { name: 'New Pet', breed: 'Unknown' });
-      refetchPets();
-      showToast({ message: 'Pet added successfully' });
-    } catch (error) {
-      showToast({ message: 'Failed to add pet', severity: 'warning' });
-    }
-  };
-
-  const handleUploadFile = async () => {
-    try {
-      await contactService.createFile(id, { name: 'New File.pdf', size: '1.0 MB', url: '#' });
-      refetchFiles();
-      showToast({ message: 'File uploaded successfully' });
-    } catch (error) {
-      showToast({ message: 'Failed to upload file', severity: 'warning' });
-    }
-  };
-
-  const handleAddTask = async () => {
-    try {
-      await contactService.createTask(id, { title: 'New Task', status: 'pending' });
-      refetchTasks();
-      showToast({ message: 'Task created successfully' });
-    } catch (error) {
-      showToast({ message: 'Failed to create task', severity: 'warning' });
-    }
-  };
-
-  const handleAddActivity = async (data: any) => {
-    try {
-      await contactService.createActivity(id, data);
-      refetchActivities();
-      showToast({ message: 'Activity logged successfully' });
-    } catch (error) {
-      showToast({ message: 'Failed to log activity', severity: 'warning' });
-    }
-  };
-
-  const handleClockIn = async () => {
-    try {
-      await contactService.clockIn(id);
-      refetchShifts();
-      showToast({ message: 'Clocked in successfully' });
-    } catch (error) {
-      showToast({ message: 'Failed to clock in', severity: 'warning' });
-    }
-  };
-
-  const handleClockOut = async (shiftId: string) => {
-    try {
-      await contactService.clockOut(shiftId);
-      refetchShifts();
-      showToast({ message: 'Clocked out successfully' });
-    } catch (error) {
-      showToast({ message: 'Failed to clock out', severity: 'warning' });
     }
   };
 

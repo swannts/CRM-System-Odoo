@@ -1,8 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOmniInstances, 
+  createBroadcastThunk,
+  selectOmnichannel 
+} from 'src/store/slices/omnichannel-slice';
+import { fetchContactSummary, selectContacts } from 'src/store/slices/contact-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -26,10 +32,8 @@ import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { contactService } from 'src/services/contact-service';
-import { omniChannelService, omniMarketingService } from 'src/services/omni-service';
-
 import { Iconify } from 'src/components/iconify';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
@@ -58,6 +62,10 @@ const defaultValues: FormValues = {
 
 export function BroadcastCreateView() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  
+  const { instances } = useAppSelector(selectOmnichannel);
+  const { summary: contactSummary } = useAppSelector(selectContacts);
 
   const [error, setError] = useState<string | null>(null);
   const [contactSearch, setContactSearch] = useState('');
@@ -76,31 +84,34 @@ export function BroadcastCreateView() {
 
   const values = watch();
 
-  const { data: instances = [] } = useQuery({
-    queryKey: ['omni-instances'],
-    queryFn: () => omniChannelService.getInstances(),
-  });
+  useEffect(() => {
+    dispatch(fetchOmniInstances());
+    dispatch(fetchContactSummary());
+  }, [dispatch]);
 
-  const { data: contacts = [], isLoading: contactsLoading } = useQuery({
-    queryKey: ['broadcast-contacts', contactSearch],
-    queryFn: () => contactService.getContacts({ search: contactSearch }),
-  });
+  const instancesList = instances.data || [];
+  const contacts = contactSummary.data || [];
+  const contactsLoading = contactSummary.loading;
 
   const filteredInstances = useMemo(
-    () => instances.filter((instance: any) => instance.provider === values.provider),
-    [instances, values.provider]
+    () => instancesList.filter((instance: any) => instance.provider === values.provider),
+    [instancesList, values.provider]
   );
 
   const availableContacts = useMemo(
     () =>
       contacts.filter((contact: any) => {
-        if (!contact.phone) {
-          return false;
-        }
+        if (!contact.phone) return false;
+        
+        const isMatch = contact.fullName?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                       contact.email?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                       contact.phone?.includes(contactSearch);
+                       
+        if (!isMatch) return false;
 
         return !selectedRecipients.some((recipient) => recipient.contactId === (contact.id || contact._id));
       }),
-    [contacts, selectedRecipients]
+    [contacts, selectedRecipients, contactSearch]
   );
 
   const addRecipient = (contact: any) => {
@@ -138,16 +149,6 @@ export function BroadcastCreateView() {
     setSelectedRecipients([]);
   };
 
-  const createMutation = useMutation({
-    mutationFn: omniMarketingService.createBroadcast,
-    onSuccess: () => {
-      router.push(paths.dashboard.omni.marketing);
-    },
-    onError: (mutationError: any) => {
-      setError(mutationError?.response?.data?.message || mutationError?.message || 'Failed to create broadcast.');
-    },
-  });
-
   const onSubmit = handleSubmit(async (data) => {
     if (selectedRecipients.length === 0) {
       setError('Select at least one recipient before launching the campaign.');
@@ -156,27 +157,35 @@ export function BroadcastCreateView() {
 
     setError(null);
 
-    await createMutation.mutateAsync({
-      name: data.name,
-      provider: data.provider,
-      instanceId: data.instanceId,
-      content: data.content,
-      type: 'text',
-      scheduledAt: data.scheduledAt ? new Date(data.scheduledAt).toISOString() : undefined,
-      metadata: {
-        audienceSource: 'crm_contacts',
-        contactSearch: contactSearch || null,
-      },
-      recipients: selectedRecipients.map((recipient) => ({
-        contactId: recipient.contactId,
-        mobile: recipient.phone,
-        variables: {
-          name: recipient.fullName,
-          phone: recipient.phone,
-          email: recipient.email || '',
+    try {
+      await dispatch(createBroadcastThunk({
+        name: data.name,
+        provider: data.provider,
+        instanceId: data.instanceId,
+        content: data.content,
+        type: 'text',
+        scheduledAt: data.scheduledAt ? new Date(data.scheduledAt).toISOString() : undefined,
+        metadata: {
+          audienceSource: 'crm_contacts',
+          contactSearch: contactSearch || null,
         },
-      })),
-    });
+        recipients: selectedRecipients.map((recipient) => ({
+          contactId: recipient.contactId,
+          mobile: recipient.phone,
+          variables: {
+            name: recipient.fullName,
+            phone: recipient.phone,
+            email: recipient.email || '',
+          },
+        })),
+      })).unwrap();
+      
+      toast.success('Broadcast created successfully');
+      router.push(paths.dashboard.omni.marketing);
+    } catch (err) {
+      setError(err || 'Failed to create broadcast.');
+      toast.error(err || 'Failed to create broadcast');
+    }
   });
 
   const handleAddVariable = (variable: string) => {
@@ -475,7 +484,7 @@ export function BroadcastCreateView() {
                   size="large"
                   type="submit"
                   variant="contained"
-                  loading={isSubmitting || createMutation.isPending}
+                  loading={isSubmitting}
                   sx={{ mt: 2 }}
                 >
                   Launch Campaign

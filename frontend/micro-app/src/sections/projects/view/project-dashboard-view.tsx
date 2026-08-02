@@ -1,6 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchProjectById, 
+  fetchProjectCards, 
+  selectProjects 
+} from 'src/store/slices/project-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -10,8 +16,6 @@ import Avatar from '@mui/material/Avatar';
 import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import CardHeader from '@mui/material/CardHeader';
-
-import { projectService } from 'src/services/project-service';
 
 import { Iconify } from 'src/components/iconify';
 import { Chart, useChart } from 'src/components/chart';
@@ -24,16 +28,16 @@ type Props = {
 
 export function ProjectDashboardView({ id }: Props) {
   const theme = useTheme();
+  const dispatch = useAppDispatch();
+  const projectState = useAppSelector(selectProjects);
 
-  const { data: project } = useQuery({
-    queryKey: ['project', id],
-    queryFn: () => projectService.getProject(id),
-  });
+  const project = projectState.currentProject.data;
+  const tasks = projectState.currentProject.currentBoard.cards;
 
-  const { data: tasks } = useQuery({
-    queryKey: ['board-cards', id],
-    queryFn: () => projectService.getCards(`board-${id}`), // Mapping virtual board ID
-  });
+  useEffect(() => {
+    dispatch(fetchProjectById(id));
+    dispatch(fetchProjectCards(`board-${id}`)); // Mapping virtual board ID
+  }, [dispatch, id]);
 
   const totalTasks = tasks?.length || 0;
   const highPriority = tasks?.filter((t: any) => t.priority === '1').length || 0;

@@ -1,4 +1,6 @@
-'use client';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchSummary, selectMarketing } from 'src/store/slices/marketing-slice';
 
 import Link from 'next/link';
 
@@ -16,7 +18,6 @@ import { paths } from 'src/routes/paths';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { Iconify } from 'src/components/iconify';
 
-import { useMarketingSummary } from '../hooks/use-marketing';
 import { MarketingRecentActivity } from '../marketing-recent-activity';
 import { MarketingSummaryCards } from '../components/marketing-summary-cards';
 
@@ -68,9 +69,18 @@ const SECTIONS = [
 ];
 
 export function MarketingDashboardView() {
-  const { data: summary, isLoading, error } = useMarketingSummary();
+  const dispatch = useAppDispatch();
+  const { summary: summaryState } = useAppSelector(selectMarketing);
+
+  const summary = summaryState.data;
+  const isLoading = summaryState.loading;
+  const error = summaryState.error;
 
   const isNotAvailable = !isLoading && (summary as any)?.isFallback;
+
+  useEffect(() => {
+    dispatch(fetchSummary());
+  }, [dispatch]);
 
   return (
     <DashboardContent maxWidth="xl">

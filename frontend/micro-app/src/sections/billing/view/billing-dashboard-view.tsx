@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Grid from '@mui/material/Unstable_Grid2';
@@ -13,11 +13,12 @@ import TableBody from '@mui/material/TableBody';
 import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
-import { useTheme, alpha } from '@mui/material/styles';
+import { useTheme } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
-import { useBillingSummary, useBillingGraph, useInvoices } from 'src/hooks/use-billing';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchBillingInvoices, fetchBillingSummary, fetchBillingGraph } from 'src/store/slices/billing-slice';
 import { fCurrency } from 'src/utils/format-number';
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -31,12 +32,20 @@ import { BillingRevenueChart } from '../components/billing-revenue-chart';
 export function BillingDashboardView() {
   const theme = useTheme();
   const router = useRouter();
+  const dispatch = useAppDispatch();
 
-  const { data: summary } = useBillingSummary();
-  const { data: graphData } = useBillingGraph(6);
-  const { data: invoicesData, isLoading: isInvoicesLoading } = useInvoices({ page: 1, pageSize: 5 });
+  const { invoices: invoicesState, summary: summaryState } = useAppSelector((state) => state.billing);
 
-  const invoices = invoicesData?.data || [];
+  useEffect(() => {
+    dispatch(fetchBillingSummary());
+    dispatch(fetchBillingGraph(6));
+    dispatch(fetchBillingInvoices({ page: 1, pageSize: 5 }));
+  }, [dispatch]);
+
+  const summary = summaryState.data;
+  const graphData = summaryState.data?.graph || [];
+  const invoices = invoicesState.data || [];
+  const isInvoicesLoading = invoicesState.loading;
 
   return (
     <DashboardContent maxWidth="xl">

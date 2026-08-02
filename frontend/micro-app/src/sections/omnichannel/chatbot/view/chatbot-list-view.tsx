@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchOmniChatbots, updateOmniChatbotThunk, selectOmni } from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -19,8 +21,6 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniAutomationService } from 'src/services/omni-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
@@ -28,23 +28,27 @@ import { Scrollbar } from 'src/components/scrollbar';
 // ----------------------------------------------------------------------
 
 export function ChatbotListView() {
+  const dispatch = useAppDispatch();
   const router = useRouter();
+  const { chatbots } = useAppSelector(selectOmni);
 
-  const { data: chatbots, isLoading, refetch } = useQuery({
-    queryKey: ['omni-chatbots'],
-    queryFn: () => omniAutomationService.getChatbots(),
-  });
+  useEffect(() => {
+    dispatch(fetchOmniChatbots());
+  }, [dispatch]);
 
   const handleToggleActive = async (id: string, currentStatus: boolean) => {
     try {
-      await omniAutomationService.updateChatbot(id, { isActive: !currentStatus });
-      refetch();
+      await dispatch(updateOmniChatbotThunk({ id, data: { isActive: !currentStatus } })).unwrap();
+      dispatch(fetchOmniChatbots());
     } catch (error) {
       console.error(error);
     }
   };
 
-  if (isLoading) {
+  const isLoading = chatbots.loading;
+  const chatbotsData = chatbots.data;
+
+  if (isLoading && !chatbotsData.length) {
     return <Box sx={{ p: 5, textAlign: 'center' }}><LinearProgress /></Box>;
   }
 
@@ -76,7 +80,7 @@ export function ChatbotListView() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(chatbots || []).map((row: any) => (
+              {chatbotsData.map((row: any) => (
                 <TableRow key={row.id}>
                   <TableCell>
                     <Typography variant="subtitle2" noWrap>{row.name}</Typography>
@@ -107,6 +111,13 @@ export function ChatbotListView() {
                   </TableCell>
                 </TableRow>
               ))}
+              {chatbotsData.length === 0 && !isLoading && (
+                 <TableRow>
+                   <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                     No chatbots found.
+                   </TableCell>
+                 </TableRow>
+              )}
             </TableBody>
           </Table>
         </Scrollbar>

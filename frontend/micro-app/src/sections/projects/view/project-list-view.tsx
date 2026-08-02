@@ -1,10 +1,11 @@
 'use client';
 
 import { z as zod } from 'zod';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchProjects, selectProjects } from 'src/store/slices/project-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -56,16 +57,18 @@ export const NewProjectSchema = zod.object({
 // ----------------------------------------------------------------------
 
 export function ProjectListView() {
+  const dispatch = useAppDispatch();
+  const projectState = useAppSelector(selectProjects);
   const [search, setSearch] = useState('');
   const router = useRouter();
   const quickEdit = useBoolean();
 
-  const { data: projectsData, isLoading, refetch } = useQuery({
-    queryKey: ['projects', search],
-    queryFn: () => projectService.getProjects(),
-  });
+  useEffect(() => {
+    dispatch(fetchProjects());
+  }, [dispatch]);
 
-  const projects = Array.isArray(projectsData) ? projectsData : [];
+  const projects = projectState.projects.data;
+  const isLoading = projectState.projects.loading;
 
   const methods = useForm({
     resolver: zodResolver(NewProjectSchema),
@@ -86,11 +89,15 @@ export function ProjectListView() {
       await projectService.createProject(data);
       reset();
       quickEdit.onFalse();
-      refetch();
+      dispatch(fetchProjects());
     } catch (error) {
       console.error(error);
     }
   });
+
+  const filteredProjects = projects.filter((project: any) =>
+    (project.name || project.title || '').toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <DashboardContent maxWidth="xl">
@@ -148,7 +155,7 @@ export function ProjectListView() {
                   ))
                 ) : (
                   <>
-                    {projects.map((row: any) => (
+                    {filteredProjects.map((row: any) => (
                       <TableRow key={row.id || row._id} hover>
                         <TableCell>
                           <Typography
@@ -170,7 +177,7 @@ export function ProjectListView() {
                       </TableRow>
                     ))}
 
-                    {projects.length === 0 && !isLoading && (
+                    {filteredProjects.length === 0 && !isLoading && (
                       <TableRow>
                         <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
                           <Typography variant="h6">No projects found</Typography>

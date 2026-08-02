@@ -2,6 +2,14 @@
 
 import { PosRegister } from '../components/pos-register';
 
-export function PosWorkspaceView() {
-  return <PosRegister />;
+type Props = {
+  mode?: string;
+  shopId?: string;
+  deliveryId?: string;
+  orderId?: string;
+  [key: string]: any;
+};
+
+export function PosWorkspaceView({ mode, shopId, ...other }: Props) {
+  return <PosRegister mode={mode} shopId={shopId} {...other} />;
 }

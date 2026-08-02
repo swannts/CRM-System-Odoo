@@ -1,88 +1,77 @@
+import { useMemo } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchCommerceProducts,
+  fetchCommerceCategories,
+  createMagentoProductThunk,
+  updateMagentoProductThunk,
+  deleteMagentoProductThunk,
+  selectCommerce,
+} from 'src/store/slices/commerce-slice';
+import { commerceService } from 'src/services/commerce-service';
 import type { ProductFormValues } from 'src/sections/commerce/view/commerce-workspace.types';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+export function useMagentoProducts(params?: { orgId?: string; enabled?: boolean }) {
+  const dispatch = useAppDispatch();
+  const { products } = useAppSelector(selectCommerce);
 
-import {
-  commerceService,
-  type ICommerceProduct,
-  type ICommerceCategory,
-  type ICommerceImageAsset,
-} from 'src/services/commerce-service';
+  useMemo(() => {
+    if (params?.enabled !== false) {
+      dispatch(fetchCommerceProducts({ orgId: params?.orgId }));
+    }
+  }, [dispatch, params?.orgId, params?.enabled]);
 
-type UseMagentoProductsParams = {
-  orgId?: string;
-  enabled?: boolean;
-  queryKey?: unknown[];
-};
-
-export function useMagentoProducts(params?: UseMagentoProductsParams) {
-  const enabled = params?.enabled ?? true;
-  return useQuery<ICommerceProduct[]>({
-    queryKey: params?.queryKey ?? ['magento-products', params?.orgId || 'default'],
-    enabled,
-    queryFn: () => commerceService.getProducts(params?.orgId),
-  });
+  return {
+    data: products.items,
+    isLoading: products.loading,
+    error: products.error,
+  };
 }
 
-export function useMagentoCategories(params?: { orgId?: string; enabled?: boolean; queryKey?: unknown[] }) {
-  const enabled = params?.enabled ?? true;
-  return useQuery<ICommerceCategory[]>({
-    queryKey: params?.queryKey ?? ['magento-categories', params?.orgId || 'default'],
-    enabled,
-    queryFn: () => commerceService.getCategories(params?.orgId),
-  });
+export function useMagentoCategories(params?: { orgId?: string; enabled?: boolean }) {
+  const dispatch = useAppDispatch();
+  const { categories } = useAppSelector(selectCommerce);
+
+  useMemo(() => {
+    if (params?.enabled !== false) {
+      dispatch(fetchCommerceCategories(params?.orgId));
+    }
+  }, [dispatch, params?.orgId, params?.enabled]);
+
+  return {
+    data: categories.items,
+    isLoading: categories.loading,
+    error: categories.error,
+  };
 }
 
-export function useMagentoCreateProduct(opts: { orgId: string; invalidateKeys?: unknown[][] }) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (values: ProductFormValues) => commerceService.createProduct(opts.orgId, values),
-    onSuccess: async () => {
-      const keys = opts.invalidateKeys ?? [
-        ['magento-products', opts.orgId],
-        ['magento-categories', opts.orgId],
-        ['commerce-products'],
-        ['pos-magento-products', opts.orgId],
-      ];
-      await Promise.all(keys.map((key) => queryClient.invalidateQueries({ queryKey: key })));
-    },
-  });
+export function useMagentoCreateProduct(opts: { orgId: string }) {
+  const dispatch = useAppDispatch();
+  return {
+    mutate: (values: ProductFormValues) =>
+      dispatch(createMagentoProductThunk({ orgId: opts.orgId, data: values })),
+  };
 }
 
-export function useMagentoUpdateProduct(opts: { orgId: string; sku: string; invalidateKeys?: unknown[][] }) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (values: ProductFormValues) => commerceService.updateProduct(opts.orgId, opts.sku, values),
-    onSuccess: async () => {
-      const keys = opts.invalidateKeys ?? [
-        ['magento-products', opts.orgId],
-        ['magento-categories', opts.orgId],
-        ['commerce-products'],
-        ['pos-magento-products', opts.orgId],
-      ];
-      await Promise.all(keys.map((key) => queryClient.invalidateQueries({ queryKey: key })));
-    },
-  });
+export function useMagentoUpdateProduct(opts: { orgId: string; sku: string }) {
+  const dispatch = useAppDispatch();
+  return {
+    mutate: (values: ProductFormValues) =>
+      dispatch(updateMagentoProductThunk({ orgId: opts.orgId, sku: opts.sku, data: values })),
+  };
 }
 
-export function useMagentoDeleteProduct(opts: { orgId: string; invalidateKeys?: unknown[][] }) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (sku: string) => commerceService.deleteProduct(opts.orgId, sku),
-    onSuccess: async () => {
-      const keys = opts.invalidateKeys ?? [
-        ['magento-products', opts.orgId],
-        ['magento-categories', opts.orgId],
-        ['commerce-products'],
-        ['pos-magento-products', opts.orgId],
-      ];
-      await Promise.all(keys.map((key) => queryClient.invalidateQueries({ queryKey: key })));
-    },
-  });
+export function useMagentoDeleteProduct(opts: { orgId: string }) {
+  const dispatch = useAppDispatch();
+  return {
+    mutate: (sku: string) =>
+      dispatch(deleteMagentoProductThunk({ orgId: opts.orgId, sku })),
+  };
 }
 
 export function useMagentoUploadProductImages() {
-  return useMutation<ICommerceImageAsset[], Error, File[]>({
-    mutationFn: async (files: File[]) => Promise.all(files.map((file) => commerceService.uploadProductImage(file))),
-  });
+  return {
+    mutate: async (files: File[]) =>
+      Promise.all(files.map((file) => commerceService.uploadProductImage(file))),
+  };
 }

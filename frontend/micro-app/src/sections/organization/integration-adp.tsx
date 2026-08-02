@@ -1,6 +1,13 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchAdpStatusThunk, 
+  connectAdpThunk, 
+  disconnectAdpThunk,
+  selectIntegration 
+} from 'src/store/slices/integration-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -10,45 +17,51 @@ import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import { integrationService } from 'src/services/integration-service';
-
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function IntegrationAdp() {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const { adp } = useAppSelector(selectIntegration);
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
-  const { data: status, isLoading } = useQuery({
-    queryKey: ['adp-status'],
-    queryFn: () => integrationService.getAdpStatus(),
-  });
+  useEffect(() => {
+    dispatch(fetchAdpStatusThunk());
+  }, [dispatch]);
 
-  const connectMutation = useMutation({
-    mutationFn: () => integrationService.generateAdpToken(),
-    onSuccess: (data) => {
-      if (data) {
-        window.location.href = data;
+  const handleConnect = async () => {
+    try {
+      setIsMutationPending(true);
+      const url = await dispatch(connectAdpThunk()).unwrap();
+      if (url) {
+        window.location.href = url;
       }
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to connect to ADP');
-    },
-  });
+    } catch (err) {
+      toast.error(err || 'Failed to connect to ADP');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const disconnectMutation = useMutation({
-    mutationFn: () => integrationService.disconnectAdp(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adp-status'] });
+  const handleDisconnect = async () => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(disconnectAdpThunk()).unwrap();
+      dispatch(fetchAdpStatusThunk());
       toast.success('Disconnected from ADP');
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to disconnect');
-    },
-  });
+    } catch (err) {
+      toast.error(err || 'Failed to disconnect');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  if (isLoading) {
+  const status = adp.status;
+  const isLoading = adp.loading;
+
+  if (isLoading && !status) {
     return <CircularProgress />;
   }
 
@@ -113,19 +126,19 @@ export function IntegrationAdp() {
           <Button
             variant="outlined"
             color="error"
-            onClick={() => disconnectMutation.mutate()}
-            disabled={disconnectMutation.isPending}
+            onClick={handleDisconnect}
+            disabled={isMutationPending}
           >
-            {disconnectMutation.isPending ? 'Disconnecting...' : 'Disconnect ADP'}
+            {isMutationPending ? 'Disconnecting...' : 'Disconnect ADP'}
           </Button>
         ) : (
           <Button
             variant="contained"
             color="primary"
             size="large"
-            onClick={() => connectMutation.mutate()}
-            disabled={connectMutation.isPending}
-            startIcon={connectMutation.isPending ? <CircularProgress size={20} color="inherit" /> : <Iconify icon="eva:external-link-fill" />}
+            onClick={handleConnect}
+            disabled={isMutationPending}
+            startIcon={isMutationPending ? <CircularProgress size={20} color="inherit" /> : <Iconify icon="eva:external-link-fill" />}
           >
             Connect with ADP
           </Button>

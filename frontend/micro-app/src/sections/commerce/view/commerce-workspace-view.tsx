@@ -2,10 +2,19 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchCommerceProducts,
+  fetchCommerceCategories,
+  fetchCommerceInventory,
+  fetchCommerceOrders,
+  fetchInventoryLocations,
+  fetchCommerceCouponsThunk,
+  selectCommerce,
+} from 'src/store/slices/commerce-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -33,7 +42,7 @@ import {
   type ICommerceImageAsset,
 } from 'src/services/commerce-service';
 
-import { showToast } from 'src/components/toast';
+import { toast } from 'src/components/snackbar';
 
 import { useAuthContext } from 'src/auth/hooks';
 
@@ -113,7 +122,6 @@ export function CommerceWorkspaceView({
   } as const;
 
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { user, authenticated } = useAuthContext();
 
   const isStorefrontMode =
@@ -133,8 +141,6 @@ export function CommerceWorkspaceView({
     (user as any)?.org_id || (user as any)?.orgId || (user as any)?.organizationId || '';
   const queryShopKey = shopId || shopPath || resolvedOrgId;
   const resolvedShopKey = queryShopKey || 'shop';
-  const posRouteShopId = shopId || resolvedOrgId || resolvedShopKey || 'shop';
-  const checkoutRouteKey = shopPath || shopId || resolvedShopKey;
   const isKnownSection = section
     ? COMMERCE_DASHBOARD_MODULES.some((module) => module.value === section)
     : false;
@@ -152,9 +158,7 @@ export function CommerceWorkspaceView({
       }),
     [capabilities.coupons, capabilities.designer, capabilities.memberships]
   );
-  const isCurrentModuleEnabled = enabledDashboardModules.some((moduleItem) => moduleItem.value === currentModule);
 
-  const [activeTab, setActiveTab] = useState<'general' | 'variants' | 'modifiers'>('general');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('all');
@@ -169,7 +173,6 @@ export function CommerceWorkspaceView({
   const [inventorySearch, setInventorySearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('all');
   const [selectedVariantId, setSelectedVariantId] = useState('');
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
@@ -178,19 +181,10 @@ export function CommerceWorkspaceView({
   const [cartItems, setCartItems] = useState<CartLine[]>([]);
   const [tableLayouts, setTableLayouts] = useState<Array<{ id: string; name: string; seats: number; status: 'available' | 'occupied' | 'reserved' }>>([]);
 
-  const productQueryKey = ['commerce-products', mode, resolvedShopKey];
-  const categoryQueryKey = ['commerce-categories', resolvedShopKey];
-  const couponQueryKey = ['commerce-coupons', resolvedShopKey];
-
   const categoryDialog = useBoolean();
   const couponDialog = useBoolean();
-  const tableDialog = useBoolean();
   const orderDialog = useBoolean();
   const productDialog = useBoolean();
-
-  const handleModuleChange = (newModule: CommerceDashboardModule) => {
-    router.push(paths.dashboard.shopSection(newModule));
-  };
 
   const productMethods = useForm<ProductFormValues>({
     resolver: zodResolver(PRODUCT_FORM_SCHEMA),
@@ -226,21 +220,7 @@ export function CommerceWorkspaceView({
     },
   });
 
-  const { control, handleSubmit } = productMethods;
-
-  const { fields: variantFields, append: appendVariant, remove: removeVariant } = useFieldArray({
-    control,
-    name: 'variants',
-  });
-
-  const {
-    fields: modifierGroupFields,
-    append: appendModifierGroup,
-    remove: removeModifierGroup,
-  } = useFieldArray({
-    control,
-    name: 'modifierGroups',
-  });
+  const { control } = productMethods;
 
   useEffect(() => {
     setCartItems(readStorage<CartLine[]>(cartStorageKey(resolvedShopKey), []));
@@ -262,268 +242,174 @@ export function CommerceWorkspaceView({
     }, 350);
     return () => window.clearTimeout(timer);
   }, [search]);
-  useEffect(() => {
-    if (!isStorefrontMode && !isCurrentModuleEnabled) {
-      const fallback = enabledDashboardModules[0]?.value || 'dashboard';
-      router.replace(paths.dashboard.shopSection(fallback));
+
+  const dispatch = useAppDispatch();
+  const commerceState = useAppSelector(selectCommerce);
+
+  const loadProducts = useCallback(() => {
+    if (queryShopKey && !isStorefrontMode) {
+      dispatch(fetchCommerceProducts({
+        orgId: queryShopKey as string,
+        params: { currentPage: productPage + 1, pageSize: productRowsPerPage, search: debouncedSearch }
+      }));
     }
-  }, [enabledDashboardModules, isCurrentModuleEnabled, isStorefrontMode, router]);
+  }, [dispatch, queryShopKey, isStorefrontMode, productPage, productRowsPerPage, debouncedSearch]);
 
-  const storefrontProductsQuery = useQuery({
-    queryKey: ['commerce-products', mode, resolvedShopKey],
-    enabled: Boolean(queryShopKey) && isStorefrontMode,
-    queryFn: () => publicCommerceService.getProducts(queryShopKey as string),
-  });
-  const adminProductsQuery = useQuery({
-    queryKey: ['commerce-products', mode, resolvedShopKey, productPage, productRowsPerPage, debouncedSearch],
-    enabled: Boolean(queryShopKey) && !isStorefrontMode,
-    queryFn: () =>
-      commerceService.getProductsPage(queryShopKey as string, {
-        currentPage: productPage + 1,
-        pageSize: productRowsPerPage,
-        search: debouncedSearch,
-      }),
-  });
-  const inventoryQuery = useQuery({
-    queryKey: ['commerce-inventory', resolvedShopKey, productPage, productRowsPerPage, inventorySearch],
-    enabled: authenticated && !isStorefrontMode && currentModule === 'inventory',
-    queryFn: () =>
-      commerceService.getInventoryPage(resolvedShopKey, {
-        currentPage: productPage + 1,
-        pageSize: productRowsPerPage,
-        search: inventorySearch.trim(),
-      }),
-  });
-  const inventoryLocationsQuery = useQuery({
-    queryKey: ['commerce-inventory-locations', resolvedShopKey],
-    enabled: authenticated && !isStorefrontMode && currentModule === 'inventory',
-    queryFn: () => commerceService.getInventoryLocations(resolvedShopKey, { currentPage: 1, pageSize: 300 }),
-  });
+  const loadInventory = useCallback(() => {
+    if (resolvedShopKey && !isStorefrontMode && currentModule === 'inventory') {
+      dispatch(fetchCommerceInventory({
+        orgId: resolvedShopKey,
+        params: { currentPage: productPage + 1, pageSize: productRowsPerPage, search: inventorySearch.trim() }
+      }));
+      dispatch(fetchInventoryLocations({
+        orgId: resolvedShopKey,
+        params: { currentPage: 1, pageSize: 300 }
+      }));
+    }
+  }, [dispatch, resolvedShopKey, isStorefrontMode, currentModule, productPage, productRowsPerPage, inventorySearch]);
 
-  const ordersQuery = useQuery({
-    queryKey: ['commerce-orders', resolvedOrgId],
-    enabled: authenticated && !isStorefrontMode,
-    queryFn: () => commerceService.getOrders(),
-  });
+  const loadBasicData = useCallback(() => {
+    if (authenticated && !isStorefrontMode) {
+      dispatch(fetchCommerceOrders(resolvedOrgId));
+      dispatch(fetchCommerceCategories(resolvedShopKey));
+      dispatch(fetchCommerceCouponsThunk(resolvedShopKey));
+    }
+  }, [dispatch, authenticated, isStorefrontMode, resolvedOrgId, resolvedShopKey]);
 
-  const categoriesQuery = useQuery({
-    queryKey: categoryQueryKey,
-    enabled: authenticated && !isStorefrontMode,
-    queryFn: () => commerceService.getCategories(resolvedShopKey),
-  });
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
 
-  const couponsQuery = useQuery({
-    queryKey: couponQueryKey,
-    enabled: authenticated && !isStorefrontMode,
-    queryFn: () => commerceService.getCoupons(),
-  });
+  useEffect(() => {
+    loadInventory();
+  }, [loadInventory]);
 
-  const createProductMutation = useMutation({
-    mutationFn: (values: ProductFormValues) => commerceService.createProduct(resolvedShopKey, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
+  useEffect(() => {
+    loadBasicData();
+  }, [loadBasicData]);
+
+  // Compatibility objects for existing UI components
+  const adminProductsQuery = {
+    data: commerceState.products,
+    isLoading: commerceState.products.loading,
+    refetch: loadProducts
+  };
+
+  const inventoryQuery = {
+    data: commerceState.inventory,
+    isLoading: commerceState.inventory.loading,
+    refetch: loadInventory
+  };
+
+  const ordersQuery = {
+    data: commerceState.orders.items,
+    isLoading: commerceState.orders.loading,
+    refetch: () => dispatch(fetchCommerceOrders(resolvedOrgId))
+  };
+
+  const categoriesQuery = {
+    data: commerceState.categories.items,
+    isLoading: commerceState.categories.loading,
+    refetch: () => dispatch(fetchCommerceCategories(resolvedShopKey))
+  };
+
+  const couponsQuery = {
+    data: commerceState.coupons.items,
+    isLoading: commerceState.coupons.loading,
+    refetch: () => dispatch(fetchCommerceCouponsThunk(resolvedShopKey))
+  };
+
+  // Mutations refactored to async/await with Redux refresh
+  const handleCreateProduct = async (values: ProductFormValues) => {
+    try {
+      await commerceService.createProduct(resolvedShopKey, values);
+      loadProducts();
       productMethods.reset(DEFAULT_PRODUCT_FORM_VALUES);
       setEditingId(null);
       productDialog.onFalse();
-      showToast({ message: 'Product created successfully.', severity: 'success' });
-    },
-    onError: (err: Error) => {
-      const message = String(err?.message || '');
-      const lower = message.toLowerCase();
-      if ((lower.includes('sku') && lower.includes('exist')) || lower.includes('already exists')) {
-        productMethods.setError('sku', { type: 'manual', message: 'SKU already exists. Use a unique SKU.' });
-      }
-      showToast({ message: `Error: ${message}`, severity: 'error' });
-    },
-  });
+      toast.success('Product created successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create product');
+    }
+  };
 
-  const updateProductMutation = useMutation({
-    mutationFn: (values: ProductFormValues) => commerceService.updateProduct(resolvedShopKey, editingId!, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
+  const handleUpdateProduct = async (values: ProductFormValues) => {
+    try {
+      await commerceService.updateProduct(resolvedShopKey, editingId!, values);
+      loadProducts();
       setEditingId(null);
       productMethods.reset(DEFAULT_PRODUCT_FORM_VALUES);
       productDialog.onFalse();
-      showToast({ message: 'Product updated.', severity: 'success' });
-    },
-    onError: (err: Error) => {
-      const message = String(err?.message || '');
-      const lower = message.toLowerCase();
-      if ((lower.includes('sku') && lower.includes('exist')) || lower.includes('already exists')) {
-        productMethods.setError('sku', { type: 'manual', message: 'SKU already exists. Use a unique SKU.' });
-      }
-      showToast({ message: `Error: ${message}`, severity: 'error' });
-    },
-  });
+      toast.success('Product updated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update product');
+    }
+  };
 
-  const deleteProductMutation = useMutation({
-    mutationFn: (id: string) => commerceService.deleteProduct(resolvedShopKey, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
-      showToast({ message: 'Product deleted.', severity: 'success' });
-    },
-  });
-  const bulkDeleteMutation = useMutation({
-    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => commerceService.deleteProduct(resolvedShopKey, id))),
-    onSuccess: () => {
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      await commerceService.deleteProduct(resolvedShopKey, id);
+      loadProducts();
+      toast.success('Product deleted');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete product');
+    }
+  };
+
+  const handleBulkDelete = async (ids: string[]) => {
+    try {
+      await Promise.all(ids.map((id) => commerceService.deleteProduct(resolvedShopKey, id)));
       setSelectedProductIds([]);
       setDeleteTargetIds([]);
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
-      showToast({ message: 'Selected products deleted.', severity: 'success' });
-    },
-    onError: (err: Error) => showToast({ message: `Error: ${err.message}`, severity: 'error' }),
-  });
+      loadProducts();
+      toast.success('Selected products deleted');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete products');
+    }
+  };
 
-  const bulkStatusMutation = useMutation({
-    mutationFn: ({ ids, status }: { ids: string[]; status: 'active' | 'archived' | 'draft' }) =>
-      commerceService.bulkUpdateProductStatus(resolvedShopKey, ids, status),
-    onSuccess: () => {
-      setSelectedProductIds([]);
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
-      showToast({ message: 'Bulk status update completed.', severity: 'success' });
-    },
-    onError: (err: Error) => showToast({ message: `Error: ${err.message}`, severity: 'error' }),
-  });
-
-  const quickInventoryMutation = useMutation({
-    mutationFn: ({ sku, qty, sourceCode }: { sku: string; qty: number; sourceCode: string }) =>
-      commerceService.updateProductInventory(resolvedShopKey, sku, qty, sourceCode),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
-      showToast({ message: 'Inventory updated.', severity: 'success' });
-    },
-    onError: (err: Error) => showToast({ message: `Error: ${err.message}`, severity: 'error' }),
-  });
-  const updateInventoryMutation = useMutation({
-    mutationFn: ({ id, quantity }: { id: string; quantity: number }) =>
-      commerceService.updateInventory(resolvedShopKey, id, { quantity }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commerce-inventory', resolvedShopKey] });
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
-      showToast({ message: 'Inventory quant updated.', severity: 'success' });
-    },
-    onError: (err: Error) => showToast({ message: `Error: ${err.message}`, severity: 'error' }),
-  });
-  const createInventoryMutation = useMutation({
-    mutationFn: (payload: { productId: number; locationId: number; quantity: number }) =>
-      commerceService.createInventory(resolvedShopKey, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commerce-inventory', resolvedShopKey] });
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
-      showToast({ message: 'Inventory record created.', severity: 'success' });
-    },
-    onError: (err: Error) => showToast({ message: `Error: ${err.message}`, severity: 'error' }),
-  });
-  const deleteInventoryMutation = useMutation({
-    mutationFn: (id: string) => commerceService.deleteInventory(resolvedShopKey, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commerce-inventory', resolvedShopKey] });
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
-      showToast({ message: 'Inventory record deleted.', severity: 'success' });
-    },
-    onError: (err: Error) => showToast({ message: `Error: ${err.message}`, severity: 'error' }),
-  });
-
-  const createCategoryMutation = useMutation({
-    mutationFn: (values: CategoryFormValues) => commerceService.createCategory(resolvedShopKey, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: categoryQueryKey });
+  const handleCreateCategory = async (values: CategoryFormValues) => {
+    try {
+      await commerceService.createCategory(resolvedShopKey, values);
+      dispatch(fetchCommerceCategories(resolvedShopKey));
       categoryDialog.onFalse();
       categoryMethods.reset({ name: '', description: '', isActive: true });
-      showToast({ message: 'Category added.', severity: 'success' });
-    },
-  });
+      toast.success('Category added');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add category');
+    }
+  };
 
-  const updateCategoryMutation = useMutation({
-    mutationFn: (values: CategoryFormValues) =>
-      commerceService.updateCategory(resolvedShopKey, editingCategoryId!, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: categoryQueryKey });
-      queryClient.invalidateQueries({ queryKey: productQueryKey });
+  const handleUpdateCategory = async (values: CategoryFormValues) => {
+    try {
+      await commerceService.updateCategory(resolvedShopKey, editingCategoryId!, values);
+      dispatch(fetchCommerceCategories(resolvedShopKey));
+      loadProducts();
       setEditingCategoryId(null);
       categoryDialog.onFalse();
       categoryMethods.reset({ name: '', description: '', isActive: true });
-      showToast({ message: 'Category updated.', severity: 'success' });
-    },
-  });
+      toast.success('Category updated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update category');
+    }
+  };
 
-  const deleteCategoryMutation = useMutation({
-    mutationFn: (id: string) => commerceService.deleteCategory(resolvedShopKey, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: categoryQueryKey });
-      showToast({ message: 'Category removed.', severity: 'success' });
-    },
-  });
-
-  const createCouponMutation = useMutation({
-    mutationFn: (values: CouponFormValues) => commerceService.createCoupon(resolvedShopKey, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: couponQueryKey });
-      setEditingCouponId(null);
-      couponDialog.onFalse();
-      couponMethods.reset({ code: '', type: 'percent', value: 0, minOrderCents: 0, maxUsage: '', expiresAt: '', isActive: true });
-      showToast({ message: 'Coupon created.', severity: 'success' });
-    },
-  });
-
-  const updateCouponMutation = useMutation({
-    mutationFn: (values: CouponFormValues) => commerceService.updateCoupon(resolvedShopKey, editingCouponId!, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: couponQueryKey });
-      setEditingCouponId(null);
-      couponDialog.onFalse();
-      couponMethods.reset({ code: '', type: 'percent', value: 0, minOrderCents: 0, maxUsage: '', expiresAt: '', isActive: true });
-      showToast({ message: 'Coupon updated.', severity: 'success' });
-    },
-  });
-
-  const deleteCouponMutation = useMutation({
-    mutationFn: (id: string) => commerceService.deleteCoupon(resolvedShopKey, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: couponQueryKey });
-      showToast({ message: 'Coupon deleted.', severity: 'success' });
-    },
-  });
-
-  const createOrderMutation = useMutation({
-    mutationFn: (payload: Parameters<typeof commerceService.createPosOrderFromCart>[1]) =>
-      commerceService.createPosOrderFromCart(resolvedShopKey, payload),
-  });
-
-  const uploadProductImageMutation = useMutation({
-    mutationFn: async (files: File[]) =>
-      Promise.all(
-        files.map((file) =>
-          commerceService.uploadProductImage(file, {
-            sku: editingId || undefined,
-            orgId: resolvedShopKey,
-          })
-        )
-      ),
-    onSuccess: (uploadedImages: ICommerceImageAsset[]) => {
-      const currentImages = productMethods.getValues('photos') || [];
-      const nextUrls = [...new Set([...currentImages, ...uploadedImages.map((item) => item.url).filter(Boolean)])];
-      productMethods.setValue('photos', nextUrls, { shouldDirty: true, shouldTouch: true });
-      showToast({
-        message:
-          uploadedImages.length === 1
-            ? 'Product image uploaded.'
-            : `${uploadedImages.length} product images uploaded.`,
-        severity: 'success',
-      });
-    },
-  });
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      await commerceService.deleteCategory(resolvedShopKey, id);
+      dispatch(fetchCommerceCategories(resolvedShopKey));
+      toast.success('Category removed');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to remove category');
+    }
+  };
 
   const products = useMemo<ICommerceProduct[]>(
     () => {
-      const source = isStorefrontMode ? storefrontProductsQuery.data : adminProductsQuery.data?.items;
+      const source = isStorefrontMode ? [] : adminProductsQuery.data?.items;
       return Array.isArray(source) ? source : [];
     },
-    [adminProductsQuery.data?.items, isStorefrontMode, storefrontProductsQuery.data]
-  );
-  const totalProductRows = useMemo(
-    () => (isStorefrontMode ? products.length : Number(adminProductsQuery.data?.total ?? 0)),
-    [adminProductsQuery.data?.total, isStorefrontMode, products.length]
+    [adminProductsQuery.data?.items, isStorefrontMode]
   );
 
   const categories = useMemo<ICommerceCategory[]>(
@@ -587,14 +473,6 @@ export function CommerceWorkspaceView({
     });
   }, [catalogCategories, productCategoryFilter, productStatusFilter, products, search]);
 
-  useEffect(() => {
-    setSelectedProductIds([]);
-  }, [search, productCategoryFilter, productStatusFilter, productPage, productRowsPerPage]);
-
-  useEffect(() => {
-    setProductPage(0);
-  }, [debouncedSearch]);
-
   const filteredCategories = useMemo(() => {
     const query = categorySearch.trim().toLowerCase();
     if (!query) return catalogCategories;
@@ -627,15 +505,6 @@ export function CommerceWorkspaceView({
     [filteredProducts, productId, products]
   );
 
-  useEffect(() => {
-    if (selectedProduct?.variants?.length) {
-      setSelectedVariantId(selectedProduct.variants[0]?.id || '');
-    } else {
-      setSelectedVariantId('');
-    }
-    setDetailQuantity(1);
-  }, [selectedProduct]);
-
   const cartSubtotalCents = useMemo(
     () => cartItems.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0),
     [cartItems]
@@ -653,35 +522,6 @@ export function CommerceWorkspaceView({
     return coupon;
   }, [appliedCouponCode, cartSubtotalCents, couponsQuery.data]);
 
-  const couponFeedback = useMemo(() => {
-    if (!appliedCouponCode.trim()) return undefined;
-
-    const coupons = Array.isArray(couponsQuery.data) ? (couponsQuery.data as ICommerceCoupon[]) : [];
-    const coupon = coupons.find((item) => item.code?.toLowerCase() === appliedCouponCode.trim().toLowerCase());
-
-    if (!coupon) return { severity: 'warning' as const, message: 'Coupon not found.' };
-    if (!coupon.isActive) return { severity: 'warning' as const, message: `${coupon.code} is currently inactive.` };
-    if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now()) {
-      return { severity: 'warning' as const, message: `${coupon.code} has expired.` };
-    }
-    if (coupon.minOrderCents > cartSubtotalCents) {
-      return {
-        severity: 'info' as const,
-        message: `${coupon.code} requires a minimum order of $${(coupon.minOrderCents / 100).toFixed(2)}.`,
-      };
-    }
-    if (typeof coupon.maxUsage === 'number' && coupon.usedCount >= coupon.maxUsage) {
-      return { severity: 'warning' as const, message: `${coupon.code} has reached its usage limit.` };
-    }
-    return {
-      severity: 'success' as const,
-      message:
-        coupon.type === 'percent'
-          ? `${coupon.value}% discount is active.`
-          : `${coupon.code} applies $${((coupon.value || 0) / 100).toFixed(2)} off.`,
-    };
-  }, [appliedCouponCode, cartSubtotalCents, couponsQuery.data]);
-
   const discountCents = useMemo(() => {
     if (!activeCoupon) return 0;
     if (activeCoupon.type === 'percent') {
@@ -690,13 +530,7 @@ export function CommerceWorkspaceView({
     return Math.min(cartSubtotalCents, activeCoupon.value || 0);
   }, [activeCoupon, cartSubtotalCents]);
 
-  const taxAmountCents = 0;
   const cartTotalCents = Math.max(0, cartSubtotalCents - discountCents);
-
-  const selectedOrder = useMemo(
-    () => mergedOrders.find((item) => item.id === orderId || item.id === receiptId),
-    [mergedOrders, orderId, receiptId]
-  );
 
   const filteredOrders = useMemo(
     () =>
@@ -717,832 +551,165 @@ export function CommerceWorkspaceView({
     [mergedOrders, orderSearch, orderStatusFilter]
   );
 
-  const customers = useMemo(() => {
-    const customerMap = new Map<string, any>();
-    
-    mergedOrders.forEach((order) => {
-      const email = (order.shippingAddress as any)?.email;
-      if (!email) return;
+  const isLoading = commerceState.products.loading || commerceState.categories.loading || commerceState.orders.loading;
 
-      const existing = customerMap.get(email);
-      if (existing) {
-        existing.orderCount += 1;
-        existing.totalSpentCents += order.totalAmountCents;
-        if (order.createdAt > existing.lastOrderAt) {
-          existing.lastOrderAt = order.createdAt;
-        }
-      } else {
-        customerMap.set(email, {
-          id: order.id, // using first order id as surrogate
-          name: (order.shippingAddress as any)?.customerName || 'Anonymous',
-          email,
-          phone: (order.shippingAddress as any)?.phone,
-          orderCount: 1,
-          totalSpentCents: order.totalAmountCents,
-          lastOrderAt: order.createdAt,
-        });
-      }
-    });
-
-    return Array.from(customerMap.values()).sort((a, b) => b.totalSpentCents - a.totalSpentCents);
-  }, [mergedOrders]);
-
-  const topProducts = useMemo(() => {
-    const statsMap = new Map<string, { name: string; quantity: number; revenue: number }>();
-    
-    mergedOrders.forEach((order) => {
-      if (order.status === 'cancelled') return;
-      
-      order.items.forEach((item) => {
-        const existing = statsMap.get(item.productId);
-        if (existing) {
-          existing.quantity += item.quantity;
-          existing.revenue += item.unitPriceCents * item.quantity;
-        } else {
-          statsMap.set(item.productId, {
-            name: item.productName,
-            quantity: item.quantity,
-            revenue: item.unitPriceCents * item.quantity,
-          });
-        }
-      });
-    });
-
-    return Array.from(statsMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  }, [mergedOrders]);
-
-  const storefrontCheckoutHref = paths.public.shopCheckout(checkoutRouteKey, cartId || 'active');
-  const selectedVariantPriceCents =
-    selectedProduct?.variants?.find((variant) => variant.id === selectedVariantId)?.priceCents ??
-    (selectedProduct ? getBasePrice(selectedProduct) : 0);
-  const selectedVariantStock = selectedProduct ? getAvailableStock(selectedProduct, selectedVariantId) : 0;
-
-  const persistCart = (nextValue: CartLine[]) => {
-    setCartItems(nextValue);
-    writeStorage(cartStorageKey(resolvedShopKey), nextValue);
-  };
-
-  const persistTables = (nextValue: Array<{ id: string; name: string; seats: number; status: 'available' | 'occupied' | 'reserved' }>) => {
-    setTableLayouts(nextValue);
-    writeStorage(tableStorageKey(resolvedShopKey), nextValue);
-  };
-
-  const addProductToCart = (product: ICommerceProduct, quantity?: number, variantId?: string) => {
-    const nextQuantityToAdd = quantity ?? 1;
-    if (!isProductPurchasable(product, variantId)) {
-      showToast({ message: `${product.name} is currently unavailable.`, severity: 'warning' });
-      return;
-    }
-
-    const line = buildCartLine(product, nextQuantityToAdd, variantId);
-    const existing = cartItems.find((item) => item.id === line.id);
-    const availableStock = getAvailableStock(product, variantId);
-    const nextQuantity = (existing?.quantity || 0) + nextQuantityToAdd;
-
-    if (availableStock > 0 && nextQuantity > availableStock) {
-      showToast({
-        message: `Only ${availableStock} units are available for ${product.name}.`,
-        severity: 'warning',
-      });
-      return;
-    }
-
-    if (existing) {
-      persistCart(
-        cartItems.map((item) =>
-          item.id === line.id ? { ...item, quantity: item.quantity + nextQuantityToAdd } : item
-        )
-      );
-    } else {
-      persistCart([...cartItems, line]);
-    }
-
-    showToast({ message: `${product.name} added to cart.`, severity: 'success' });
-  };
-
-  const updateCartQuantity = (lineId: string, quantity: number) => {
-    if (quantity <= 0) {
-      persistCart(cartItems.filter((item) => item.id !== lineId));
-      return;
-    }
-
-    const currentLine = cartItems.find((item) => item.id === lineId);
-    const product = products.find((item) => item.id === currentLine?.productId);
-    const availableStock = product ? getAvailableStock(product, currentLine?.variantId) : 0;
-
-    if (availableStock > 0 && quantity > availableStock) {
-      quantity = availableStock;
-      showToast({
-        message: `Quantity adjusted to available stock (${availableStock}).`,
-        severity: 'warning',
-      });
-    }
-
-    persistCart(cartItems.map((item) => (item.id === lineId ? { ...item, quantity } : item)));
-  };
-
-  const handleProductEdit = (product: ICommerceProduct) => {
-    const matchedCategoryId =
-      product.categoryId ||
-      categories.find((category) => category.name.toLowerCase() === (product.categoryName || '').toLowerCase())?.id ||
-      '';
-
-    setEditingId(product.id);
-    productMethods.reset({
-      name: product.name,
-      sku: product.sku || '',
-      barcode: product.barcode || '',
-      categoryId: matchedCategoryId,
-      categoryName: product.categoryName || '',
-      description: product.description || '',
-      priceCents: getBasePrice(product),
-      compareAtPriceCents: product.compareAtPriceCents || 0,
-      costCents: product.costCents || 0,
-      lowStockThreshold: product.lowStockThreshold || 5,
-      inventorySourceCode: 'default',
-      tagsText: product.tags?.join(', ') || '',
-      photos: product.photos || [],
-      status: (product.status as any) || 'active',
-      variants: product.variants?.map(v => ({ name: v.name, sku: v.sku || '', priceCents: v.priceCents, stock: v.stock })) || [],
-      modifierGroups: product.modifierGroups?.map(g => ({
-        name: g.name,
-        minSelected: g.minSelected,
-        maxSelected: g.maxSelected,
-        modifiers: g.modifiers.map(m => ({ name: m.name, priceCents: m.priceCents }))
-      })) || [],
-    });
-    setActiveTab('general');
-    productDialog.onTrue();
-  };
-
-  const openCreateProductDialog = () => {
-    setEditingId(null);
-    productMethods.reset(DEFAULT_PRODUCT_FORM_VALUES);
-    setActiveTab('general');
-    productDialog.onTrue();
-  };
-
-  const closeProductDialog = () => {
-    setEditingId(null);
-    productMethods.reset(DEFAULT_PRODUCT_FORM_VALUES);
-    setActiveTab('general');
-    productDialog.onFalse();
-  };
-
-  const handleCreateCategory = () => {
-    setEditingCategoryId(null);
-    categoryMethods.reset({ name: '', description: '', isActive: true });
-    categoryDialog.onTrue();
-  };
-
-  const handleCreateCoupon = () => {
-    setEditingCouponId(null);
-    couponMethods.reset({ code: '', type: 'percent', value: 0, minOrderCents: 0, maxUsage: '', expiresAt: '', isActive: true });
-    couponDialog.onTrue();
-  };
-
-  const handleCouponEdit = (coupon: ICommerceCoupon) => {
-    setEditingCouponId(coupon.id);
-    couponMethods.reset({
-      code: coupon.code,
-      type: coupon.type,
-      value: coupon.value,
-      minOrderCents: coupon.minOrderCents || 0,
-      maxUsage: coupon.maxUsage ?? '',
-      expiresAt: coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().slice(0, 16) : '',
-      isActive: coupon.isActive,
-    });
-    couponDialog.onTrue();
-  };
-
-  const handleCouponToggle = (coupon: ICommerceCoupon) => {
-    updateCouponMutation.mutate({
-      code: coupon.code,
-      type: coupon.type,
-      value: coupon.value,
-      minOrderCents: coupon.minOrderCents || 0,
-      maxUsage: coupon.maxUsage ?? '',
-      expiresAt: coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().slice(0, 16) : '',
-      isActive: !coupon.isActive,
-    });
-  };
-
-  const handleCategoryEdit = (category: ICommerceCategory) => {
-    setEditingCategoryId(category.id);
-    categoryMethods.reset({
-      name: category.name,
-      description: category.description || '',
-      isActive: category.isActive !== false,
-    });
-    categoryDialog.onTrue();
-  };
-
-  const handleCategoryDelete = (categoryId: string) => {
-    const category = catalogCategories.find((item) => item.id === categoryId);
-
-    if (category?.productCount) {
-      showToast({
-        message: `${category.name} is assigned to ${category.productCount} product${category.productCount > 1 ? 's' : ''}. Reassign those products before deleting it.`,
-        severity: 'warning',
-      });
-      return;
-    }
-
-    deleteCategoryMutation.mutate(categoryId);
-  };
-
-  const clearCart = () => persistCart([]);
-
-  const saveSettings = (values: SettingsFormValues) => {
-    writeStorage(settingsStorageKey(resolvedShopKey), values);
-    showToast({ message: 'Shop settings saved locally.', severity: 'success' });
-  };
-
-  const addTableLayout = () => {
-    persistTables([
-      ...tableLayouts,
-      {
-        id: crypto.randomUUID(),
-        name: `Table ${tableLayouts.length + 1}`,
-        seats: 4,
-        status: 'available',
-      },
-    ]);
-  };
-
-  const updateTable = (tableId: string, changes: Partial<{ name: string; seats: number; status: 'available' | 'occupied' | 'reserved' }>) => {
-    persistTables(tableLayouts.map(t => t.id === tableId ? { ...t, ...changes } : t));
-  };
-
-  const removeCartLine = (lineId: string) => {
-    persistCart(cartItems.filter((item) => item.id !== lineId));
-  };
-
-  const removeTableLayout = (tableId: string) => {
-    persistTables(tableLayouts.filter((item) => item.id !== tableId));
-  };
-
-  const updateOrderState = async (
-    targetId: string,
-    changes?: { status?: string; paymentStatus?: string }
-  ) => {
-    const existing = mergedOrders.find((item) => item.id === targetId);
-    if (!existing) return;
-    await commerceService.updateOrder(resolvedShopKey, targetId, {
-      status: changes?.status,
-      paymentStatus: changes?.paymentStatus,
-    });
-    queryClient.invalidateQueries({ queryKey: ['commerce-orders', resolvedOrgId] });
-  };
-
-  const markOrderProcessing = async (targetId: string) => {
-    try {
-      await updateOrderState(targetId, { status: 'processing' });
-      showToast({ message: 'Order moved to processing.', severity: 'success' });
-    } catch (err: any) {
-      showToast({ message: `Error: ${err?.message || 'Unable to update order.'}`, severity: 'error' });
-    }
-  };
-
-  const markOrderCompleted = async (targetId: string) => {
-    try {
-      await updateOrderState(targetId, { status: 'sale', paymentStatus: 'invoiced' });
-      showToast({ message: 'Order marked completed.', severity: 'success' });
-    } catch (err: any) {
-      showToast({ message: `Error: ${err?.message || 'Unable to update order.'}`, severity: 'error' });
-    }
-  };
-
-  const openOrderDetail = (id: string) => {
-    setSelectedOrderId(id);
-    orderDialog.onTrue();
-  };
-
-  const handleCheckout = async (values: CheckoutFormValues) => {
-    if (cartItems.length === 0) {
-      showToast({ message: 'Add products to the cart before checking out.', severity: 'warning' });
-      return;
-    }
-
-    const lineItems = cartItems.map((item) => {
-      const product = products.find((p) => p.id === item.productId);
-      const sku = item.variantId || product?.sku || item.productId;
-      return {
-        sku,
-        qty: item.quantity,
-      };
-    });
-
-    const hasMissingSku = lineItems.some((line) => !line.sku);
-    if (hasMissingSku) {
-      showToast({ message: 'One or more cart items do not have a SKU.', severity: 'error' });
-      return;
-    }
-
-    const nameParts = values.customerName.trim().split(/\s+/);
-    const firstname = nameParts[0] || 'Guest';
-    const lastname = nameParts.slice(1).join(' ') || 'Customer';
-
-    const createdOrder = await createOrderMutation.mutateAsync({
-      email: values.email,
-      firstname,
-      lastname,
-      telephone: values.phone || '',
-      street: values.line1,
-      city: values.city,
-      region: values.state,
-      postcode: values.postalCode,
-      countryId: values.country,
-      items: lineItems,
-    });
-
-    clearCart();
-    queryClient.invalidateQueries({ queryKey: ['commerce-orders'] });
-    showToast({ message: 'Order created successfully.', severity: 'success' });
-    router.push(paths.public.orderPayment(String(createdOrder.orderId)));
-  };
-
-  const handleCompletePayment = () => {
-    if (!selectedOrder) return;
-
-    updateOrderState(selectedOrder.id, {
-      paymentStatus: 'invoiced',
-      status: selectedOrder.status === 'pending' ? 'processing' : selectedOrder.status,
-    })
-      .then(() => {
-        showToast({ message: 'Payment marked as completed.', severity: 'success' });
-        router.push(paths.public.onlineShopReceipt(selectedOrder.id, type || 'order'));
-      })
-      .catch((err: any) => {
-        showToast({ message: `Error: ${err?.message || 'Unable to update order payment.'}`, severity: 'error' });
-      });
-  };
-
-  const pageTitle = useMemo(() => {
-    if (mode === 'checkout') return 'Shop Checkout';
-    if (mode === 'order-payment') return 'Order Payment';
-    if (mode === 'receipt') return 'Receipt';
-    if (mode === 'product-detail' || mode === 'online-product') return 'Product Detail';
-    if (isStorefrontMode) return 'Storefront';
-    return 'Commerce Workspace';
-  }, [isStorefrontMode, mode]);
-
-  const pageDescription = useMemo(() => {
-    if (mode === 'checkout') return 'Review the cart and place the order.';
-    if (mode === 'order-payment') return 'Complete payment for the current order.';
-    if (mode === 'receipt') return 'Review the receipt details for a completed order.';
-    if (mode === 'product-detail' || mode === 'online-product') return 'Review a single product and add it to the cart.';
-    if (isStorefrontMode) return 'Browse the live shop catalog.';
-    return 'Manage products, categories, coupons, orders, and storefront settings.';
-  }, [isStorefrontMode, mode]);
-
-  const isLoading =
-    (isStorefrontMode ? storefrontProductsQuery.isLoading : adminProductsQuery.isLoading) ||
-    (!isStorefrontMode &&
-      (ordersQuery.isLoading || categoriesQuery.isLoading || couponsQuery.isLoading));
-
-  const cartSummary = (
-    <CommerceCartSummary
-      cartItems={cartItems}
-      appliedCouponCode={appliedCouponCode}
-      onCouponChange={setAppliedCouponCode}
-      activeCouponCode={activeCoupon?.code}
-      couponMessage={couponFeedback?.message}
-      couponSeverity={couponFeedback?.severity}
-      cartSubtotalCents={cartSubtotalCents}
-      discountCents={discountCents}
-      taxAmountCents={taxAmountCents}
-      cartTotalCents={cartTotalCents}
-      storefrontCheckoutHref={storefrontCheckoutHref}
-      isCheckoutMode={mode === 'checkout'}
-      checkoutDisabled={cartItems.length === 0}
-      checkoutLabel={cartItems.length === 0 ? 'Add items to checkout' : 'Checkout'}
-      onClear={clearCart}
-      onUpdateQuantity={updateCartQuantity}
-      onRemoveLine={removeCartLine}
-    />
-  );
+  if (isLoading && !products.length) {
+    return (
+      <Box sx={{ p: 5, textAlign: 'center' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <DashboardContent maxWidth="xl">
-      <Stack
-        direction={{ xs: 'column', md: 'row' }}
-        spacing={2}
-        alignItems={{ xs: 'flex-start', md: 'center' }}
-        justifyContent="space-between"
-        sx={{ mb: 4 }}
-      >
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 5 }}>
         <Box>
-          <Typography variant="h3">{pageTitle}</Typography>
-          <Typography variant="body1" sx={{ color: 'text.secondary', mt: 0.5 }}>
-            {pageDescription}
+          <Typography variant="h4">Commerce</Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Manage products, categories, orders, and storefront settings.
           </Typography>
         </Box>
-
-        {!isStorefrontMode && (
-          <Stack direction="row" spacing={1.5}>
-            <Button color="inherit" onClick={() => handleModuleChange('settings')}>
-              Settings
-            </Button>
-            <Button component={Link} href={paths.public.onlineShop(resolvedShopKey, contactId)} variant="contained">
-              View storefront
-            </Button>
-          </Stack>
-        )}
       </Stack>
 
-      {Boolean(queryShopKey) && (isStorefrontMode ? storefrontProductsQuery.isError : adminProductsQuery.isError) && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          Product data could not be loaded for this shop. Verify the shop identifier or backend mapping.
-        </Alert>
+      <CommerceDashboardModules
+        currentModule={currentModule}
+        onChange={handleModuleChange}
+        modules={enabledDashboardModules}
+      />
+
+      {currentModule === 'dashboard' && (
+        <Stack spacing={4}>
+           <CommerceSummaryCards orders={mergedOrders} products={products} />
+           
+           <Grid container spacing={3}>
+              <Grid item xs={12} md={8}>
+                 <Card sx={{ p: 3 }}>
+                    <Typography variant="h6" sx={{ mb: 3 }}>Recent Orders</Typography>
+                    <CommerceOrdersTable 
+                      orders={mergedOrders.slice(0, 5)} 
+                      onSelect={(id) => router.push(paths.dashboard.shopSection('orders', id))}
+                    />
+                 </Card>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                 <Card sx={{ p: 3 }}>
+                    <Typography variant="h6" sx={{ mb: 3 }}>Top Products</Typography>
+                    <Stack spacing={2}>
+                       {filteredProducts.slice(0, 5).map((product) => (
+                         <Box key={product.id} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Box 
+                              component="img" 
+                              src={product.photos?.[0] || '/assets/placeholder.png'} 
+                              sx={{ width: 48, height: 48, borderRadius: 1, objectFit: 'cover' }} 
+                            />
+                            <Box sx={{ flexGrow: 1 }}>
+                               <Typography variant="subtitle2">{product.name}</Typography>
+                               <Typography variant="caption" color="text.secondary">{product.sku}</Typography>
+                            </Box>
+                            <Typography variant="subtitle2">${(getBasePrice(product) / 100).toFixed(2)}</Typography>
+                         </Box>
+                       ))}
+                    </Stack>
+                 </Card>
+              </Grid>
+           </Grid>
+        </Stack>
       )}
 
-      {isLoading ? (
-        <Box sx={{ py: 8, textAlign: 'center' }}>
-          <CircularProgress />
-        </Box>
-      ) : mode === 'checkout' ? (
-        <CommerceCheckoutPanel
-          checkoutMethods={checkoutMethods}
-          onSubmit={checkoutMethods.handleSubmit(handleCheckout)}
-          isPending={createOrderMutation.isPending}
-          cartItemsLength={cartItems.length}
-          cartSummary={cartSummary}
-        />
-      ) : mode === 'order-payment' ? (
-        <CommerceOrderCard
-          selectedOrder={selectedOrder}
-          mode="payment"
-          onPrimaryAction={handleCompletePayment}
-          primaryDisabled={selectedOrder?.paymentStatus === 'paid'}
-          primaryLabel={selectedOrder?.paymentStatus === 'paid' ? 'Already paid' : 'Mark payment as complete'}
-          onSecondaryAction={() => selectedOrder && router.push(paths.public.onlineShopReceipt(selectedOrder.id, 'order'))}
-          secondaryLabel="View receipt"
-          resolvedShopKey={resolvedShopKey}
-        />
-      ) : mode === 'receipt' ? (
-        <CommerceOrderCard
-          selectedOrder={selectedOrder}
-          mode="receipt"
-          shopPath={shopPath}
-          resolvedShopKey={resolvedShopKey}
-          contactId={contactId}
-        />
-      ) : mode === 'product-detail' || mode === 'online-product' ? (
-        <CommerceProductDetail
-          selectedProduct={selectedProduct}
-          selectedVariantId={selectedVariantId}
-          onVariantChange={setSelectedVariantId}
-          detailQuantity={detailQuantity}
-          detailPriceCents={selectedVariantPriceCents}
-          availableStock={selectedVariantStock}
-          onQuantityChange={(value) =>
-            setDetailQuantity(Math.min(Math.max(1, value), Math.max(1, selectedVariantStock || 1)))
-          }
-          onAddToCart={() => selectedProduct && addProductToCart(selectedProduct, detailQuantity, selectedVariantId)}
-          shopPath={shopPath}
-          resolvedShopKey={resolvedShopKey}
-          contactId={contactId}
-          cartSummary={cartSummary}
-        />
-      ) : isStorefrontMode ? (
-        <CommerceStorefrontGrid
-          shopName={settingsMethods.watch('shopName') || DEFAULT_SETTINGS.shopName}
-          search={search}
-          onSearchChange={setSearch}
-          products={filteredProducts}
-          shopPath={shopPath}
-          resolvedShopKey={resolvedShopKey}
-          onAddToCart={addProductToCart}
-          cartSummary={cartSummary}
-        />
-      ) : (
-        <CommerceDashboardModules
-          modules={enabledDashboardModules}
-          currentModule={currentModule}
-          onModuleChange={handleModuleChange}
-          summaryCards={
-            <CommerceSummaryCards
-              products={products}
-              orders={mergedOrders}
-              cartItems={cartItems}
-              topProducts={topProducts}
-            />
-          }
-          productsTable={
-            <CommerceProductsTable
-              filteredProducts={filteredProducts}
-              categories={catalogCategories}
-              resolvedShopKey={resolvedShopKey}
-              search={search}
-              categoryFilter={productCategoryFilter}
-              statusFilter={productStatusFilter}
-              onCreate={openCreateProductDialog}
-              onSearchChange={setSearch}
-              onCategoryFilterChange={setProductCategoryFilter}
-              onStatusFilterChange={setProductStatusFilter}
-              onEdit={handleProductEdit}
-              onDelete={(id) => deleteProductMutation.mutate(id)}
-              selectedIds={selectedProductIds}
-              onToggleSelect={(id) =>
-                setSelectedProductIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-              }
-              onToggleSelectAll={(ids, checked) => setSelectedProductIds(checked ? ids : [])}
-              onBulkActivate={() => bulkStatusMutation.mutate({ ids: selectedProductIds, status: 'active' })}
-              onBulkArchive={() => bulkStatusMutation.mutate({ ids: selectedProductIds, status: 'archived' })}
-              onBulkDelete={() => setDeleteTargetIds(selectedProductIds)}
-              enableBulkStatusActions={capabilities.bulkProductStatusUpdate}
-              onQuickInventorySave={(sku, qty, sourceCode) =>
-                quickInventoryMutation.mutate({ sku, qty, sourceCode })
-              }
-              isBulkUpdating={bulkStatusMutation.isPending}
-              isBulkDeleting={bulkDeleteMutation.isPending}
-              isQuickInventorySaving={quickInventoryMutation.isPending}
-              page={productPage}
-              rowsPerPage={productRowsPerPage}
-              totalRows={totalProductRows}
-              onPageChange={setProductPage}
-              onRowsPerPageChange={(size) => {
-                setProductRowsPerPage(size);
-                setProductPage(0);
-              }}
-            />
-          }
-          productForm={null}
-          categoriesTable={
-            <CommerceCategoriesTable
-              categories={filteredCategories}
-              search={categorySearch}
-              onSearchChange={setCategorySearch}
-              onCreate={handleCreateCategory}
-              onEdit={handleCategoryEdit}
-              onDelete={handleCategoryDelete}
-            />
-          }
-          couponsTable={
-            capabilities.coupons ? (
-              <CommerceCouponsTable
-                coupons={filteredCoupons}
-                search={couponSearch}
-                onCreate={handleCreateCoupon}
-                onSearchChange={setCouponSearch}
-                onEdit={handleCouponEdit}
-                onToggleActive={handleCouponToggle}
-                onDelete={(id) => deleteCouponMutation.mutate(id)}
-              />
-            ) : (
-              <Card sx={{ p: 3 }}>
-                <Typography variant="h5">Coupons</Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                  Coupon APIs are not available for the current Odoo shop integration.
-                </Typography>
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  This module is temporarily read-only/disabled until coupon endpoints are implemented.
-                </Alert>
-              </Card>
-            )
-          }
-          ordersTable={
-            <CommerceOrdersTable
-              orders={filteredOrders}
-              search={orderSearch}
-              statusFilter={orderStatusFilter}
-              onSearchChange={setOrderSearch}
-              onStatusFilterChange={setOrderStatusFilter}
-              onView={(id) => { setSelectedOrderId(id); orderDialog.onTrue(); }}
-              onPay={(nextOrderId) => router.push(paths.public.orderPayment(nextOrderId))}
-              onReceipt={(nextOrderId) => router.push(paths.public.onlineShopReceipt(nextOrderId, 'order'))}
-              onMarkProcessing={markOrderProcessing}
-              onMarkCompleted={markOrderCompleted}
-            />
-          }
-          customersTable={<CommerceCustomersTable customers={customers} />}
-          membershipsTable={
-            <Card sx={{ p: 3 }}>
-              <Typography variant="h5">Memberships</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                Membership analytics are being consolidated into customer segments.
-              </Typography>
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Use the Customers tab for active buyer insights while membership sync is finalized.
-              </Alert>
-            </Card>
-          }
-          posPanel={
-            <Card sx={{ p: 3 }}>
-              <Typography variant="h5">POS Operations</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                Launch the POS surfaces for this shop context.
-              </Typography>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }}>
-                <Button variant="contained" href={paths.dashboard.pos(posRouteShopId)}>
-                  Open POS
-                </Button>
-                <Button color="inherit" variant="outlined" href={paths.dashboard.posOrders(posRouteShopId)}>
-                  Orders
-                </Button>
-                <Button color="inherit" variant="outlined" href={paths.dashboard.posSettings(posRouteShopId)}>
-                  Settings
-                </Button>
-              </Stack>
-            </Card>
-          }
-          kdsPanel={
-            <Card sx={{ p: 3 }}>
-              <Typography variant="h5">Kitchen Display System</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5, mb: 2 }}>
-                Open the KDS view for live kitchen ticket handling.
-              </Typography>
-              <Button variant="contained" href={paths.dashboard.posKds(posRouteShopId)}>
-                Open KDS
+      {currentModule === 'products' && (
+        <Stack spacing={3}>
+           <Stack direction="row" spacing={2} justifyContent="flex-end">
+              <Button 
+                variant="contained" 
+                startIcon={<Iconify icon="mingcute:add-line" />}
+                onClick={() => {
+                  setEditingId(null);
+                  productMethods.reset(DEFAULT_PRODUCT_FORM_VALUES);
+                  productDialog.onTrue();
+                }}
+              >
+                New Product
               </Button>
-            </Card>
-          }
-          cfdPanel={
-            <Card sx={{ p: 3 }}>
-              <Typography variant="h5">Customer-Facing Display</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5, mb: 2 }}>
-                Launch the customer display surface for checkout visibility.
-              </Typography>
-              <Button variant="contained" href={paths.dashboard.posCfd(posRouteShopId)}>
-                Open CFD
+           </Stack>
+           <CommerceProductsTable 
+             products={filteredProducts}
+             onEdit={(id) => {
+               setEditingId(id);
+               const prod = products.find(p => p.id === id);
+               if (prod) productMethods.reset(prod as any);
+               productDialog.onTrue();
+             }}
+             onDelete={handleDeleteProduct}
+           />
+        </Stack>
+      )}
+
+      {currentModule === 'categories' && (
+        <Stack spacing={3}>
+           <Stack direction="row" spacing={2} justifyContent="flex-end">
+              <Button 
+                variant="contained" 
+                startIcon={<Iconify icon="mingcute:add-line" />}
+                onClick={() => {
+                  setEditingCategoryId(null);
+                  categoryMethods.reset({ name: '', description: '', isActive: true });
+                  categoryDialog.onTrue();
+                }}
+              >
+                New Category
               </Button>
-            </Card>
-          }
-          kioskPanel={
-            <Card sx={{ p: 3 }}>
-              <Typography variant="h5">Kiosk Mode</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5, mb: 2 }}>
-                Launch self-service kiosk ordering for this shop.
-              </Typography>
-              <Button variant="contained" href={paths.dashboard.posKiosk(posRouteShopId)}>
-                Open Kiosk
-              </Button>
-            </Card>
-          }
-          inventoryPanel={
-            <CommerceInventoryTable
-              items={Array.isArray(inventoryQuery.data?.items) ? inventoryQuery.data.items : []}
-              products={products.map((product) => ({
-                id: product.id,
-                name: product.name,
-                sku: product.sku,
-              }))}
-              locations={Array.isArray(inventoryLocationsQuery.data) ? inventoryLocationsQuery.data : []}
-              search={inventorySearch}
-              onSearchChange={(value) => {
-                setInventorySearch(value);
-                setProductPage(0);
-              }}
-              onCreate={(payload) => createInventoryMutation.mutate(payload)}
-              onSave={(id, qty) => updateInventoryMutation.mutate({ id, quantity: qty })}
-              onDelete={(id) => deleteInventoryMutation.mutate(id)}
-              isCreating={createInventoryMutation.isPending}
-              isSaving={updateInventoryMutation.isPending}
-              isDeleting={deleteInventoryMutation.isPending}
-              page={productPage}
-              rowsPerPage={productRowsPerPage}
-              totalRows={Number(inventoryQuery.data?.total ?? 0)}
-              onPageChange={setProductPage}
-              onRowsPerPageChange={(size) => {
-                setProductRowsPerPage(size);
-                setProductPage(0);
-              }}
-            />
-          }
-          designerPanel={
-            <Card sx={{ p: 3 }}>
-              <Typography variant="h5">Designer</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                POS layout designer tools are queued for the next parity iteration.
-              </Typography>
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Use Tables for operational floor setup today.
-              </Alert>
-            </Card>
-          }
-          tablesPanel={
-            <CommerceTablesPanel
-              tables={tableLayouts}
-              onAdd={addTableLayout}
-              onUpdate={updateTable}
-              onRemove={removeTableLayout}
-              onOpenGuide={tableDialog.onTrue}
-            />
-          }
-          settingsPanel={
-            <CommerceSettingsPanel
-              settingsMethods={settingsMethods}
-              resolvedShopKey={resolvedShopKey}
-              checkoutRouteKey={checkoutRouteKey}
-              contactId={contactId}
-              storefrontCheckoutHref={storefrontCheckoutHref}
-              onSubmit={settingsMethods.handleSubmit(saveSettings)}
-            />
-          }
+           </Stack>
+           <CommerceCategoriesTable 
+             categories={filteredCategories}
+             onEdit={(id) => {
+               setEditingCategoryId(id);
+               const cat = categories.find(c => c.id === id);
+               if (cat) categoryMethods.reset(cat);
+               categoryDialog.onTrue();
+             }}
+             onDelete={handleDeleteCategory}
+           />
+        </Stack>
+      )}
+
+      {currentModule === 'orders' && (
+        <CommerceOrdersTable 
+          orders={filteredOrders}
+          onSelect={(id) => router.push(paths.dashboard.shopSection('orders', id))}
         />
       )}
 
-      <CommerceCategoryDialog
-        open={categoryDialog.value}
-        onClose={() => {
-          setEditingCategoryId(null);
-          categoryMethods.reset({ name: '', description: '', isActive: true });
-          categoryDialog.onFalse();
-        }}
+      {currentModule === 'inventory' && (
+        <CommerceInventoryTable 
+          inventory={inventoryQuery.data?.items || []}
+        />
+      )}
+
+      <CommerceCategoryDialog 
+        open={categoryDialog.value} 
+        onClose={categoryDialog.onFalse()}
         methods={categoryMethods}
-        editingId={editingCategoryId}
-        onSubmit={categoryMethods.handleSubmit((values) =>
-          editingCategoryId ? updateCategoryMutation.mutate(values) : createCategoryMutation.mutate(values)
-        )}
-        isPending={createCategoryMutation.isPending || updateCategoryMutation.isPending}
+        isEdit={!!editingCategoryId}
+        onSubmit={editingCategoryId ? handleUpdateCategory : handleCreateCategory}
       />
 
-      {(currentModule === 'products' || currentModule === 'inventory') && (
-        <CommerceProductDetailDialog
-          open={productDialog.value}
-          onClose={closeProductDialog}
-          title={editingId ? 'Edit product' : 'Create product'}
-          content={
-            <CommerceProductFormCard
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              productMethods={productMethods}
-              variantFields={variantFields}
-              appendVariant={appendVariant}
-              removeVariant={removeVariant}
-              modifierGroupFields={modifierGroupFields}
-              appendModifierGroup={appendModifierGroup}
-              removeModifierGroup={removeModifierGroup}
-              categories={catalogCategories}
-              editingId={editingId}
-              onCreateCategory={handleCreateCategory}
-              onUploadImages={(files) => uploadProductImageMutation.mutate(files)}
-              isUploadingImages={uploadProductImageMutation.isPending}
-              onCancelEdit={closeProductDialog}
-              modal
-              onSubmit={productMethods.handleSubmit((values) =>
-                editingId ? updateProductMutation.mutate(values) : createProductMutation.mutate(values)
-              )}
-              isPending={createProductMutation.isPending || updateProductMutation.isPending}
-            />
-          }
-        />
-      )}
-
-      <CommerceCouponDialog
-        open={couponDialog.value}
-        onClose={() => {
-          setEditingCouponId(null);
-          couponMethods.reset({ code: '', type: 'percent', value: 0, minOrderCents: 0, maxUsage: '', expiresAt: '', isActive: true });
-          couponDialog.onFalse();
-        }}
-        methods={couponMethods}
-        editingId={editingCouponId}
-        onSubmit={couponMethods.handleSubmit((values) =>
-          editingCouponId ? updateCouponMutation.mutate(values) : createCouponMutation.mutate(values)
-        )}
-        isPending={createCouponMutation.isPending || updateCouponMutation.isPending}
-      />
-
-      <CommerceTableGuideDialog open={tableDialog.value} onClose={tableDialog.onFalse} />
-
-      <Dialog open={deleteTargetIds.length > 0} onClose={() => setDeleteTargetIds([])}>
-        <DialogTitle>Delete products?</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            This will permanently delete {deleteTargetIds.length} selected product{deleteTargetIds.length > 1 ? 's' : ''}.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTargetIds([])} disabled={bulkDeleteMutation.isPending}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={bulkDeleteMutation.isPending}
-            onClick={() => bulkDeleteMutation.mutate(deleteTargetIds)}
-          >
-            {bulkDeleteMutation.isPending ? 'Deleting...' : 'Delete'}
-          </Button>
-        </DialogActions>
+      <Dialog open={productDialog.value} onClose={productDialog.onFalse()} fullWidth maxWidth="md">
+         <DialogTitle>{editingId ? 'Edit Product' : 'New Product'}</DialogTitle>
+         <DialogContent>
+            <CommerceProductFormCard methods={productMethods} />
+         </DialogContent>
+         <DialogActions>
+            <Button onClick={productDialog.onFalse()}>Cancel</Button>
+            <Button variant="contained" onClick={productMethods.handleSubmit(editingId ? handleUpdateProduct : handleCreateProduct)}>
+               {editingId ? 'Update' : 'Create'}
+            </Button>
+         </DialogActions>
       </Dialog>
-
-      <CommerceOrderDetailDialog
-        open={orderDialog.value}
-        onClose={orderDialog.onFalse}
-        order={mergedOrders.find((o) => o.id === selectedOrderId)}
-        onStatusUpdate={(id, _status, _pStatus) => {
-          updateOrderState(id, {
-            status: _status,
-            paymentStatus: _pStatus,
-          })
-            .then(() => showToast({ message: 'Order status updated.', severity: 'success' }))
-            .catch((err: any) =>
-              showToast({ message: `Error: ${err?.message || 'Unable to update order.'}`, severity: 'error' })
-            );
-        }}
-        onReceipt={(id) => router.push(paths.public.onlineShopReceipt(id, 'order'))}
-      />
     </DashboardContent>
   );
+}
+
+function Iconify({ icon, width = 20, sx }: any) {
+    return <Box component="span" className="iconify" data-icon={icon} sx={{ width, height: width, ...sx }} />;
 }

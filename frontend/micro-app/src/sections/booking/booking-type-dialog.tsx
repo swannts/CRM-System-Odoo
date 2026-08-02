@@ -1,7 +1,14 @@
+'use client';
+
 import { z as zod } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAppDispatch } from 'src/store/hooks';
+import { 
+  createBookingTypeThunk, 
+  updateBookingTypeThunk, 
+  fetchBookingTypes 
+} from 'src/store/slices/calendar-slice';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -15,9 +22,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 
-import { bookingService } from 'src/services/booking-service';
-
-import { showToast } from 'src/components/toast';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
@@ -38,7 +43,7 @@ interface Props {
 }
 
 export function BookingTypeDialog({ open, onClose, bookingType }: Props) {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
 
   const methods = useForm<FormValues>({
     resolver: zodResolver(SCHEMA),
@@ -53,22 +58,21 @@ export function BookingTypeDialog({ open, onClose, bookingType }: Props) {
 
   const { register, handleSubmit, formState: { isSubmitting, errors } } = methods;
 
-  const mutation = useMutation({
-    mutationFn: (data: FormValues) => 
-      bookingType 
-        ? bookingService.updateBookingType(bookingType.id, data) 
-        : bookingService.createBookingType(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['booking-types'] });
-      showToast({ message: bookingType ? 'Booking type updated' : 'Booking type created' });
+  const onSubmit = handleSubmit(async (data) => {
+    try {
+      if (bookingType) {
+        await dispatch(updateBookingTypeThunk({ id: bookingType.id, data })).unwrap();
+        toast.success('Booking type updated');
+      } else {
+        await dispatch(createBookingTypeThunk(data)).unwrap();
+        toast.success('Booking type created');
+      }
+      dispatch(fetchBookingTypes());
       onClose();
-    },
-    onError: (err: any) => {
-      showToast({ message: err.message, severity: 'error' });
+    } catch (err) {
+      toast.error(err || 'Failed to save booking type');
     }
   });
-
-  const onSubmit = handleSubmit((data) => mutation.mutate(data));
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -112,6 +116,7 @@ export function BookingTypeDialog({ open, onClose, bookingType }: Props) {
             label="Color"
             select
             fullWidth
+            defaultValue={bookingType?.color || '#2196f3'}
           >
             {[
               { label: 'Blue', value: '#2196f3' },

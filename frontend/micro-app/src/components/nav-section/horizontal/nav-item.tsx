@@ -12,9 +12,15 @@ import { Iconify } from '../../iconify';
 import { navSectionClasses } from '../classes';
 import { stateClasses, sharedStyles } from '../styles';
 
+import { NavItemProps, NavItemStateProps } from '../types';
+
 // ----------------------------------------------------------------------
 
-export const NavItem = forwardRef(
+interface StyledNavItemProps extends NavItemStateProps {
+  theme?: any;
+}
+
+export const NavItem = forwardRef<HTMLButtonElement, NavItemProps & NavItemStateProps>(
   (
     {
       path,
@@ -107,7 +113,7 @@ export const NavItem = forwardRef(
 const StyledNavItem = styled(ButtonBase, {
   shouldForwardProp: (prop) =>
     prop !== 'active' && prop !== 'open' && prop !== 'disabled' && prop !== 'depth',
-})(({ active, open, disabled, depth, theme }) => {
+})<StyledNavItemProps>(({ active, open, disabled, depth, theme }) => {
   const rootItem = depth === 1;
 
   const subItem = !rootItem;

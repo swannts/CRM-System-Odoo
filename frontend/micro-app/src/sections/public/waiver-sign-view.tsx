@@ -1,7 +1,12 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchPublicWaiverThunk,
+  signPublicWaiverThunk,
+  selectPublicFlow,
+} from 'src/store/slices/public-flow-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -15,8 +20,7 @@ import Typography from '@mui/material/Typography';
 import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
-
-import { publicFlowService } from 'src/services/public-flow-service';
+import LoadingButton from '@mui/lab/LoadingButton';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -28,6 +32,10 @@ type Props = {
 };
 
 export function WaiverSignView({ id }: Props) {
+  const dispatch = useAppDispatch();
+  const { waiver: waiverState } = useAppSelector(selectPublicFlow);
+  const { data: waiver, loading: isLoading, error } = waiverState;
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
 
@@ -37,21 +45,11 @@ export function WaiverSignView({ id }: Props) {
   const [signerName, setSignerName] = useState('');
   const [signSuccess, setSignSuccess] = useState(false);
   const [signingFor, setSigningFor] = useState<{ type: 'member' | 'guardian'; id: string | null } | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
 
-  const { data: waiver, isLoading, error, refetch } = useQuery({
-    queryKey: ['public-waiver', id],
-    queryFn: () => publicFlowService.getPublicWaiver(id),
-  });
-
-  const signMutation = useMutation({
-    mutationFn: (payload: any) => publicFlowService.signPublicWaiver(id, payload),
-    onSuccess: () => {
-      setSignSuccess(true);
-      setSigningFor(null);
-      setSignerName('');
-      refetch();
-    },
-  });
+  useEffect(() => {
+    dispatch(fetchPublicWaiverThunk(id));
+  }, [dispatch, id]);
 
   useEffect(() => {
     if (waiver) {
@@ -104,7 +102,7 @@ export function WaiverSignView({ id }: Props) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!waiverScrolled || !signingFor) return;
     const signature = canvasRef.current?.toDataURL() || '';
     const payload: any = { signerName, signature, waiverChecks, questionAnswers };
@@ -113,10 +111,22 @@ export function WaiverSignView({ id }: Props) {
     } else {
       payload.memberId = signingFor.id;
     }
-    signMutation.mutate(payload);
+
+    try {
+      setIsSigning(true);
+      await dispatch(signPublicWaiverThunk({ id, payload })).unwrap();
+      setSignSuccess(true);
+      setSigningFor(null);
+      setSignerName('');
+      dispatch(fetchPublicWaiverThunk(id));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSigning(false);
+    }
   };
 
-  if (isLoading) return <Box sx={{ py: 10, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isLoading && !waiver) return <Box sx={{ py: 10, textAlign: 'center' }}><CircularProgress /></Box>;
   if (error || !waiver) return <Alert severity="error">Failed to load waiver or invalid link.</Alert>;
 
   const members = waiver.members || [];
@@ -276,15 +286,16 @@ export function WaiverSignView({ id }: Props) {
 
                      <Stack direction="row" spacing={2}>
                         <Button fullWidth variant="outlined" color="inherit" onClick={() => setSigningFor(null)}>Cancel</Button>
-                        <Button 
+                        <LoadingButton 
                            fullWidth 
                            variant="contained" 
                            color="primary" 
                            onClick={handleSubmit}
-                           disabled={signMutation.isPending || !signerName.trim()}
+                           loading={isSigning}
+                           disabled={!signerName.trim()}
                         >
-                           {signMutation.isPending ? 'Signing...' : 'Submit Signature'}
-                        </Button>
+                           Submit Signature
+                        </LoadingButton>
                      </Stack>
                   </Stack>
                </Card>

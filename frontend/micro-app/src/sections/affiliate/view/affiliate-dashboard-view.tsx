@@ -1,18 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchAffiliateReferralThunk, selectAffiliate } from 'src/store/slices/affiliate-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { affiliateService } from 'src/services/affiliate-service';
-
 import { Iconify } from 'src/components/iconify';
 
 import { AffiliateEarnings } from '../affiliate-earnings';
@@ -23,13 +23,17 @@ import { AffiliateOnboarding } from '../affiliate-onboarding';
 
 export function AffiliateDashboardView() {
   const [currentTab, setCurrentTab] = useState('dashboard');
+  const dispatch = useAppDispatch();
+  const { referral } = useAppSelector(selectAffiliate);
 
-  const { data: referral, isLoading: isReferralLoading } = useQuery({
-    queryKey: ['affiliate-referral'],
-    queryFn: () => affiliateService.getReferral(),
-  });
+  useEffect(() => {
+    dispatch(fetchAffiliateReferralThunk());
+  }, [dispatch]);
 
-  if (isReferralLoading) {
+  const referralData = referral.data;
+  const isLoading = referral.loading;
+
+  if (isLoading && !referralData) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <CircularProgress />
@@ -37,7 +41,7 @@ export function AffiliateDashboardView() {
     );
   }
 
-  const hasAffiliateCode = !!referral?.affiliateCode;
+  const hasAffiliateCode = !!referralData?.affiliateCode;
 
   if (!hasAffiliateCode) {
     return (
@@ -86,7 +90,7 @@ export function AffiliateDashboardView() {
             Your Referral Code
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{referral.affiliateCode}</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{referralData.affiliateCode}</Typography>
             <Iconify icon="eva:copy-fill" width={18} sx={{ color: 'primary.main', cursor: 'pointer' }} />
           </Stack>
         </Box>

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchBookingTypes, fetchAppointments, selectBooking } from 'src/store/slices/booking-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -18,7 +19,6 @@ import { useBoolean } from 'src/hooks/use-boolean';
 
 import { useLocales } from 'src/locales';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { bookingService } from 'src/services/booking-service';
 
 import { Iconify } from 'src/components/iconify';
 import { showToast } from 'src/components/toast';
@@ -29,22 +29,28 @@ import { BookingTypeDialog } from '../booking-type-dialog';
 // ----------------------------------------------------------------------
 
 export function BookingListView() {
+  const dispatch = useAppDispatch();
   const { t } = useLocales();
   const dialog = useBoolean();
   const [selectedType, setSelectedType] = useState<any>(null);
   const [currentTab, setCurrentTab] = useState('types');
 
+  const bookingState = useAppSelector(selectBooking);
 
-  const { data: bookingTypes, isLoading } = useQuery({
-    queryKey: ['booking-types'],
-    queryFn: () => bookingService.getBookingTypes(),
-  });
+  useEffect(() => {
+    dispatch(fetchBookingTypes());
+  }, [dispatch]);
 
-  const { data: appointments, isLoading: appointmentsLoading } = useQuery({
-    queryKey: ['appointments'],
-    queryFn: () => bookingService.getAppointments(),
-    enabled: currentTab === 'appointments',
-  });
+  useEffect(() => {
+    if (currentTab === 'appointments') {
+      dispatch(fetchAppointments());
+    }
+  }, [dispatch, currentTab]);
+
+  const bookingTypes = bookingState.bookingTypes.data;
+  const isLoading = bookingState.bookingTypes.loading;
+  const appointments = bookingState.appointments.data;
+  const appointmentsLoading = bookingState.appointments.loading;
 
   const handleEdit = (type: any) => {
     setSelectedType(type);

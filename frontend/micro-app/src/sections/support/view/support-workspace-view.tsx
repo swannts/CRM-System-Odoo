@@ -1,7 +1,20 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchSupportTicketsThunk, 
+  fetchSupportTicketByIdThunk, 
+  createSupportTicketThunk, 
+  updateSupportTicketThunk,
+  addTicketNoteThunk,
+  addTicketReplyThunk,
+  fetchKbArticlesThunk,
+  fetchPublicKbArticlesThunk,
+  fetchKbCategoriesThunk,
+  createKbArticleThunk,
+  selectSupport 
+} from 'src/store/slices/support-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -23,13 +36,14 @@ import Typography from '@mui/material/Typography';
 import TableContainer from '@mui/material/TableContainer';
 
 import { Iconify } from 'src/components/iconify';
-import { showToast } from 'src/components/toast';
+import { toast } from 'src/components/snackbar';
 
 import { FeatureRouteShell } from 'src/sections/parity/feature-route-shell';
-import { supportService } from 'src/services/support-service';
 
 export function SupportWorkspaceView() {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const { tickets, selectedTicket, articles, publicArticles, categories } = useAppSelector(selectSupport);
+
   const [activeTab, setActiveTab] = useState<'tickets' | 'kb' | 'public-kb'>('tickets');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
@@ -49,106 +63,129 @@ export function SupportWorkspaceView() {
   const [articleCategoryId, setArticleCategoryId] = useState('');
   const [articlePublic, setArticlePublic] = useState(true);
 
-  const ticketsQuery = useQuery({
-    queryKey: ['support-tickets'],
-    queryFn: () => supportService.listTickets(),
-  });
-  const selectedTicketQuery = useQuery({
-    queryKey: ['support-ticket', selectedTicketId],
-    queryFn: () => supportService.getTicket(String(selectedTicketId)),
-    enabled: Boolean(selectedTicketId),
-  });
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
-  const categoriesQuery = useQuery({
-    queryKey: ['support-kb-categories'],
-    queryFn: () => supportService.listKbCategories(),
-    enabled: activeTab !== 'tickets',
-  });
-  const articlesQuery = useQuery({
-    queryKey: ['support-kb-articles'],
-    queryFn: () => supportService.listKbArticles(),
-    enabled: activeTab === 'kb',
-  });
-  const publicArticlesQuery = useQuery({
-    queryKey: ['support-kb-public-articles'],
-    queryFn: () => supportService.listPublicKbArticles(),
-    enabled: activeTab === 'public-kb',
-  });
+  useEffect(() => {
+    dispatch(fetchSupportTicketsThunk());
+  }, [dispatch]);
 
-  const createTicketMutation = useMutation({
-    mutationFn: () => supportService.createTicket({
-      subject,
-      description,
-      priority,
-      customerContactId: contactId ? Number(contactId) : undefined,
-      customerCompanyId: companyId ? Number(companyId) : undefined,
-      assigneeUserId: assigneeUserId || undefined,
-      slaDueAt: slaDueAt || undefined,
-    }),
-    onSuccess: async () => {
+  useEffect(() => {
+    if (selectedTicketId) {
+      dispatch(fetchSupportTicketByIdThunk(selectedTicketId));
+    }
+  }, [dispatch, selectedTicketId]);
+
+  useEffect(() => {
+    if (activeTab === 'kb') {
+      dispatch(fetchKbArticlesThunk());
+      dispatch(fetchKbCategoriesThunk());
+    } else if (activeTab === 'public-kb') {
+      dispatch(fetchPublicKbArticlesThunk());
+      dispatch(fetchKbCategoriesThunk());
+    }
+  }, [dispatch, activeTab]);
+
+  const handleCreateTicket = async () => {
+    if (!subject.trim()) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(createSupportTicketThunk({
+        subject,
+        description,
+        priority,
+        customerContactId: contactId ? Number(contactId) : undefined,
+        customerCompanyId: companyId ? Number(companyId) : undefined,
+        assigneeUserId: assigneeUserId || undefined,
+        slaDueAt: slaDueAt || undefined,
+      })).unwrap();
       setSubject('');
       setDescription('');
       setContactId('');
       setCompanyId('');
       setAssigneeUserId('');
       setSlaDueAt('');
-      await queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
-      showToast({ message: 'Ticket created', severity: 'success' });
-    },
-    onError: (error: any) => showToast({ message: error?.message || 'Unable to create ticket', severity: 'warning' }),
-  });
+      dispatch(fetchSupportTicketsThunk());
+      toast.success('Ticket created');
+    } catch (err) {
+      toast.error(err || 'Unable to create ticket');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const updateTicketMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: any }) => supportService.updateTicket(id, payload),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['support-tickets'] }),
-        queryClient.invalidateQueries({ queryKey: ['support-ticket', selectedTicketId] }),
-      ]);
-    },
-  });
+  const handleUpdateTicket = async (id: string, payload: any) => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(updateSupportTicketThunk({ id, payload })).unwrap();
+      dispatch(fetchSupportTicketsThunk());
+      dispatch(fetchSupportTicketByIdThunk(id));
+      toast.success('Ticket updated');
+    } catch (err) {
+      toast.error(err || 'Failed to update ticket');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const addNoteMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: string }) => supportService.addTicketNote(id, body),
-    onSuccess: async () => {
+  const handleAddNote = async () => {
+    if (!selectedTicketId || !noteBody.trim()) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(addTicketNoteThunk({ id: selectedTicketId, body: noteBody })).unwrap();
       setNoteBody('');
-      await queryClient.invalidateQueries({ queryKey: ['support-ticket', selectedTicketId] });
-    },
-  });
+      dispatch(fetchSupportTicketByIdThunk(selectedTicketId));
+      toast.success('Note added');
+    } catch (err) {
+      toast.error(err || 'Failed to add note');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const addReplyMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: string }) => supportService.addTicketReply(id, body, true),
-    onSuccess: async () => {
+  const handleAddReply = async () => {
+    if (!selectedTicketId || !replyBody.trim()) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(addTicketReplyThunk({ id: selectedTicketId, body: replyBody, isCustomerVisible: true })).unwrap();
       setReplyBody('');
-      await queryClient.invalidateQueries({ queryKey: ['support-ticket', selectedTicketId] });
-    },
-  });
+      dispatch(fetchSupportTicketByIdThunk(selectedTicketId));
+      toast.success('Reply sent');
+    } catch (err) {
+      toast.error(err || 'Failed to send reply');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const createArticleMutation = useMutation({
-    mutationFn: () => supportService.createKbArticle({
-      title: articleTitle,
-      body: articleBody,
-      categoryId: articleCategoryId || undefined,
-      isPublic: articlePublic,
-    }),
-    onSuccess: async () => {
+  const handleCreateArticle = async () => {
+    if (!articleTitle.trim()) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(createKbArticleThunk({
+        title: articleTitle,
+        body: articleBody,
+        categoryId: articleCategoryId || undefined,
+        isPublic: articlePublic,
+      })).unwrap();
       setArticleTitle('');
       setArticleBody('');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['support-kb-articles'] }),
-        queryClient.invalidateQueries({ queryKey: ['support-kb-public-articles'] }),
-      ]);
-      showToast({ message: 'Article created', severity: 'success' });
-    },
-  });
+      dispatch(fetchKbArticlesThunk());
+      dispatch(fetchPublicKbArticlesThunk());
+      toast.success('Article created');
+    } catch (err) {
+      toast.error(err || 'Failed to create article');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const selectedTicket = selectedTicketQuery.data;
+  const currentTicket = selectedTicket.data;
   const slaStatus = useMemo(() => {
-    if (!selectedTicket?.slaDueAt) return null;
-    const due = new Date(selectedTicket.slaDueAt).getTime();
-    const breached = selectedTicket.slaBreached || due < Date.now();
+    if (!currentTicket?.slaDueAt) return null;
+    const due = new Date(currentTicket.slaDueAt).getTime();
+    const breached = currentTicket.slaBreached || due < Date.now();
     return breached ? 'breached' : 'on-track';
-  }, [selectedTicket]);
+  }, [currentTicket]);
 
   return (
     <FeatureRouteShell
@@ -181,13 +218,13 @@ export function SupportWorkspaceView() {
                 <Grid item xs={12} sm={4}><TextField label="Company ID" value={companyId} onChange={(e) => setCompanyId(e.target.value)} fullWidth /></Grid>
                 <Grid item xs={12} sm={4}><TextField label="Assignee User ID" value={assigneeUserId} onChange={(e) => setAssigneeUserId(e.target.value)} fullWidth /></Grid>
               </Grid>
-              <Button sx={{ mt: 2 }} variant="contained" onClick={() => createTicketMutation.mutate()} disabled={createTicketMutation.isPending || !subject.trim()}>Create</Button>
+              <Button sx={{ mt: 2 }} variant="contained" onClick={handleCreateTicket} disabled={isMutationPending || !subject.trim()}>Create</Button>
             </Card>
 
             <Card sx={{ mt: 2, p: 0 }}>
               <Box sx={{ p: 2 }}><Typography variant="h6">Ticket List</Typography></Box>
               <Divider />
-              {ticketsQuery.isError ? <Alert severity="warning">Unable to load tickets.</Alert> : null}
+              {tickets.error ? <Alert severity="warning">Unable to load tickets.</Alert> : null}
               <TableContainer>
                 <Table size="small">
                   <TableHead>
@@ -199,7 +236,7 @@ export function SupportWorkspaceView() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(ticketsQuery.data || []).map((ticket: any) => (
+                    {tickets.data.map((ticket: any) => (
                       <TableRow key={ticket.id} hover selected={selectedTicketId === ticket.id} onClick={() => setSelectedTicketId(ticket.id)} sx={{ cursor: 'pointer' }}>
                         <TableCell>{ticket.subject}</TableCell>
                         <TableCell>{ticket.status}</TableCell>
@@ -207,6 +244,11 @@ export function SupportWorkspaceView() {
                         <TableCell>{ticket.slaDueAt ? new Date(ticket.slaDueAt).toLocaleString() : '—'}</TableCell>
                       </TableRow>
                     ))}
+                    {tickets.data.length === 0 && !tickets.loading && (
+                      <TableRow>
+                        <TableCell colSpan={4} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>No tickets found.</TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -215,35 +257,35 @@ export function SupportWorkspaceView() {
 
           <Grid item xs={12} md={5}>
             <Card sx={{ p: 2.5 }}>
-              {!selectedTicket ? (
+              {!currentTicket ? (
                 <Typography variant="body2" color="text.secondary">Select a ticket to view details.</Typography>
               ) : (
                 <Stack spacing={1.5}>
-                  <Typography variant="h6">{selectedTicket.subject}</Typography>
+                  <Typography variant="h6">{currentTicket.subject}</Typography>
                   <Stack direction="row" spacing={1}>
-                    <Chip size="small" label={`Status: ${selectedTicket.status}`} />
-                    <Chip size="small" color={selectedTicket.priority === 'urgent' ? 'error' : selectedTicket.priority === 'high' ? 'warning' : 'default'} label={`Priority: ${selectedTicket.priority}`} />
+                    <Chip size="small" label={`Status: ${currentTicket.status}`} />
+                    <Chip size="small" color={currentTicket.priority === 'urgent' ? 'error' : currentTicket.priority === 'high' ? 'warning' : 'default'} label={`Priority: ${currentTicket.priority}`} />
                     {slaStatus ? <Chip size="small" color={slaStatus === 'breached' ? 'error' : 'success'} label={`SLA: ${slaStatus}`} /> : null}
                   </Stack>
-                  <Typography variant="body2">{selectedTicket.description || 'No description'}</Typography>
-                  <Typography variant="caption" color="text.secondary">Contact: {selectedTicket.customerContactId || '—'} · Company: {selectedTicket.customerCompanyId || '—'} · Assignee: {selectedTicket.assigneeUserId || '—'}</Typography>
+                  <Typography variant="body2">{currentTicket.description || 'No description'}</Typography>
+                  <Typography variant="caption" color="text.secondary">Contact: {currentTicket.customerContactId || '—'} · Company: {currentTicket.customerCompanyId || '—'} · Assignee: {currentTicket.assigneeUserId || '—'}</Typography>
 
                   <Stack direction="row" spacing={1}>
-                    <Button size="small" variant="outlined" onClick={() => updateTicketMutation.mutate({ id: selectedTicket.id, payload: { status: 'in_progress' } })}>Start</Button>
-                    <Button size="small" variant="outlined" onClick={() => updateTicketMutation.mutate({ id: selectedTicket.id, payload: { status: 'resolved' } })}>Resolve</Button>
-                    <Button size="small" variant="contained" onClick={() => updateTicketMutation.mutate({ id: selectedTicket.id, payload: { status: 'closed' } })}>Close</Button>
+                    <Button size="small" variant="outlined" onClick={() => handleUpdateTicket(currentTicket.id, { status: 'in_progress' })} disabled={isMutationPending}>Start</Button>
+                    <Button size="small" variant="outlined" onClick={() => handleUpdateTicket(currentTicket.id, { status: 'resolved' })} disabled={isMutationPending}>Resolve</Button>
+                    <Button size="small" variant="contained" onClick={() => handleUpdateTicket(currentTicket.id, { status: 'closed' })} disabled={isMutationPending}>Close</Button>
                   </Stack>
 
                   <Divider />
                   <Typography variant="subtitle2">Internal Notes</Typography>
-                  {(selectedTicket.notes || []).map((note: any) => <Typography key={note.id} variant="body2">• {note.body}</Typography>)}
+                  {(currentTicket.notes || []).map((note: any) => <Typography key={note.id} variant="body2">• {note.body}</Typography>)}
                   <TextField size="small" placeholder="Add internal note" value={noteBody} onChange={(e) => setNoteBody(e.target.value)} />
-                  <Button size="small" onClick={() => selectedTicket && addNoteMutation.mutate({ id: selectedTicket.id, body: noteBody })} disabled={!noteBody.trim()}>Add Note</Button>
+                  <Button size="small" onClick={handleAddNote} disabled={!noteBody.trim() || isMutationPending}>Add Note</Button>
 
                   <Typography variant="subtitle2">Customer Replies</Typography>
-                  {(selectedTicket.replies || []).map((reply: any) => <Typography key={reply.id} variant="body2">↳ {reply.body}</Typography>)}
+                  {(currentTicket.replies || []).map((reply: any) => <Typography key={reply.id} variant="body2">↳ {reply.body}</Typography>)}
                   <TextField size="small" placeholder="Add customer-visible reply" value={replyBody} onChange={(e) => setReplyBody(e.target.value)} />
-                  <Button size="small" onClick={() => selectedTicket && addReplyMutation.mutate({ id: selectedTicket.id, body: replyBody })} disabled={!replyBody.trim()}>Add Reply</Button>
+                  <Button size="small" onClick={handleAddReply} disabled={!replyBody.trim() || isMutationPending}>Add Reply</Button>
                 </Stack>
               )}
             </Card>
@@ -261,16 +303,16 @@ export function SupportWorkspaceView() {
                 <TextField label="Category ID" value={articleCategoryId} onChange={(e) => setArticleCategoryId(e.target.value)} />
                 <TextField label="Body" value={articleBody} onChange={(e) => setArticleBody(e.target.value)} multiline minRows={4} />
                 <TextField label="Public" value={articlePublic ? 'true' : 'false'} onChange={(e) => setArticlePublic(e.target.value === 'true')} />
-                <Button variant="contained" onClick={() => createArticleMutation.mutate()} disabled={createArticleMutation.isPending || !articleTitle.trim()}>Save Article</Button>
+                <Button variant="contained" onClick={handleCreateArticle} disabled={isMutationPending || !articleTitle.trim()}>Save Article</Button>
               </Stack>
             </Card>
           </Grid>
           <Grid item xs={12} md={7}>
             <Card sx={{ p: 2.5 }}>
               <Typography variant="h6">Articles</Typography>
-              <Typography variant="caption" color="text.secondary">Categories: {(categoriesQuery.data || []).length}</Typography>
+              <Typography variant="caption" color="text.secondary">Categories: {categories.data.length}</Typography>
               <Stack spacing={1.5} sx={{ mt: 1.5 }}>
-                {(articlesQuery.data || []).map((article: any) => (
+                {articles.data.map((article: any) => (
                   <Box key={article.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography variant="subtitle2">{article.title}</Typography>
@@ -280,6 +322,9 @@ export function SupportWorkspaceView() {
                     <Typography variant="body2" color="text.secondary">{article.body}</Typography>
                   </Box>
                 ))}
+                {articles.data.length === 0 && !articles.loading && (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>No articles found.</Typography>
+                )}
               </Stack>
             </Card>
           </Grid>
@@ -291,13 +336,16 @@ export function SupportWorkspaceView() {
           <Typography variant="h6">Customer Portal Knowledge Base</Typography>
           <Typography variant="caption" color="text.secondary">Publicly visible support articles.</Typography>
           <Stack spacing={1.5} sx={{ mt: 2 }}>
-            {(publicArticlesQuery.data || []).map((article: any) => (
+            {publicArticles.data.map((article: any) => (
               <Box key={article.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
                 <Typography variant="subtitle2">{article.title}</Typography>
                 <Typography variant="body2" color="text.secondary">{article.body}</Typography>
                 {article.category?.name ? <Chip size="small" label={article.category.name} sx={{ mt: 1 }} /> : null}
               </Box>
             ))}
+            {publicArticles.data.length === 0 && !publicArticles.loading && (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>No public articles found.</Typography>
+            )}
           </Stack>
         </Card>
       )}

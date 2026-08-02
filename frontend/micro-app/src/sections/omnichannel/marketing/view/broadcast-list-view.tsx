@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchOmniBroadcasts, selectOmni } from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -18,8 +20,6 @@ import { useRouter } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniMarketingService } from 'src/services/omni-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
@@ -27,12 +27,13 @@ import { Scrollbar } from 'src/components/scrollbar';
 // ----------------------------------------------------------------------
 
 export function BroadcastListView() {
+  const dispatch = useAppDispatch();
   const router = useRouter();
+  const { broadcasts } = useAppSelector(selectOmni);
 
-  const { data: broadcasts, isLoading } = useQuery({
-    queryKey: ['omni-broadcasts'],
-    queryFn: () => omniMarketingService.getBroadcasts(),
-  });
+  useEffect(() => {
+    dispatch(fetchOmniBroadcasts());
+  }, [dispatch]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -44,7 +45,10 @@ export function BroadcastListView() {
     }
   };
 
-  if (isLoading) {
+  const isLoading = broadcasts.loading;
+  const broadcastsData = broadcasts.data;
+
+  if (isLoading && !broadcastsData.length) {
     return <Box sx={{ p: 5, textAlign: 'center' }}><LinearProgress /></Box>;
   }
 
@@ -77,7 +81,7 @@ export function BroadcastListView() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(broadcasts || []).map((row: any) => (
+              {broadcastsData.map((row: any) => (
                 <TableRow key={row.id}>
                   <TableCell>
                     <Typography variant="subtitle2" noWrap>{row.name}</Typography>
@@ -117,6 +121,13 @@ export function BroadcastListView() {
                   </TableCell>
                 </TableRow>
               ))}
+              {broadcastsData.length === 0 && !isLoading && (
+                 <TableRow>
+                   <TableCell colSpan={7} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                     No broadcasts found.
+                   </TableCell>
+                 </TableRow>
+              )}
             </TableBody>
           </Table>
         </Scrollbar>

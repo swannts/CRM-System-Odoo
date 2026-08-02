@@ -1,7 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useMemo, useState, useEffect } from 'react';
 
 import Stack from '@mui/material/Stack';
 import Grid from '@mui/material/Unstable_Grid2';
@@ -10,9 +9,15 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { dashboardService } from 'src/services/dashboard-service';
-
 import { Iconify } from 'src/components/iconify';
+
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchDashboardOverview,
+  fetchDashboardGraph,
+  fetchDashboardActivity,
+  fetchDashboardAttention,
+} from 'src/store/slices/dashboard-slice';
 
 import { OverviewHeader } from '../components/overview-header';
 import { OverviewKpiGrid } from '../components/overview-kpi-grid';
@@ -28,29 +33,38 @@ type GraphMode = 'revenue' | 'contacts' | 'orders' | 'pipeline' | 'bookings';
 type RangeMode = '7d' | '30d' | '90d' | '180d';
 
 export function OverviewView() {
+  const dispatch = useAppDispatch();
   const [viewMode, setViewMode] = useState<ViewMode>('graphs');
   const [graphMode, setGraphMode] = useState<GraphMode>('revenue');
   const [rangeMode, setRangeMode] = useState<RangeMode>('30d');
 
-  const queryResults = useQueries({
-    queries: [
-      { queryKey: ['overview-unified-kpis', rangeMode], queryFn: () => dashboardService.getOverview(rangeMode) },
-      { queryKey: ['overview-unified-graph', graphMode, rangeMode], queryFn: () => dashboardService.getGraph(graphMode, rangeMode) },
-      { queryKey: ['overview-unified-activity'], queryFn: () => dashboardService.getActivity(12) },
-      { queryKey: ['overview-unified-attention'], queryFn: () => dashboardService.getAttention() },
-    ],
-  });
+  const { overview, graph, activity, attention: attentionState } = useAppSelector((state) => state.dashboard);
 
-  const [overviewQuery, graphQuery, activityQuery, attentionQuery] = queryResults;
+  useEffect(() => {
+    dispatch(fetchDashboardOverview(rangeMode));
+  }, [dispatch, rangeMode]);
 
-  const kpis = useMemo(() => (overviewQuery.data as any)?.kpis ?? {}, [overviewQuery.data]);
-  const sourceStatus = useMemo(() => (overviewQuery.data as any)?.sourceStatus ?? {}, [overviewQuery.data]);
+  useEffect(() => {
+    dispatch(fetchDashboardGraph({ metric: graphMode, range: rangeMode }));
+  }, [dispatch, graphMode, rangeMode]);
+
+  useEffect(() => {
+    dispatch(fetchDashboardActivity(12));
+  }, [dispatch]);
+
+  useEffect(() => {
+    dispatch(fetchDashboardAttention());
+  }, [dispatch]);
+
+  const kpis = useMemo(() => overview.data?.kpis ?? {}, [overview.data]);
+  const sourceStatus = useMemo(() => overview.data?.sourceStatus ?? {}, [overview.data]);
 
   const graphData = useMemo(() => {
-    const categories = Array.isArray(graphQuery.data?.categories) ? graphQuery.data.categories : [];
-    const series = Array.isArray(graphQuery.data?.series) ? graphQuery.data.series : [];
+    const categories = Array.isArray(graph.data?.categories) ? (graph.data.categories as string[]) : [];
+    const series = Array.isArray(graph.data?.series)
+      ? (graph.data.series as { name: string; data: number[] }[]).map((s) => ({ ...s }))
+      : [];
 
-    // Format categories if they look like month keys (YYYY-MM)
     const formattedCategories = categories.map((cat: string) => {
       if (cat.includes('-') && cat.split('-').length === 2) {
         const [year, month] = cat.split('-').map(Number);
@@ -60,10 +74,10 @@ export function OverviewView() {
     });
 
     return { categories: formattedCategories, series };
-  }, [graphQuery.data]);
+  }, [graph.data]);
 
   const activities = useMemo(() => {
-    const raw = Array.isArray(activityQuery.data) ? activityQuery.data : [];
+    const raw = Array.isArray(activity.data) ? activity.data : [];
     return raw.map((item: any) => ({
       id: String(item?.id ?? Math.random()),
       title: String(item?.title ?? 'Activity'),
@@ -71,20 +85,26 @@ export function OverviewView() {
       timestamp: String(item?.timestamp ?? ''),
       type: String(item?.type ?? 'other'),
     }));
-  }, [activityQuery.data]);
+  }, [activity.data]);
 
   const attention = useMemo(() => {
-    const raw = Array.isArray(attentionQuery.data) ? attentionQuery.data : [];
+    const raw = Array.isArray(attentionState.data) ? attentionState.data : [];
     return raw.map((item: any) => ({
       title: String(item?.title ?? 'Attention required'),
       count: Number(item?.count ?? 0),
-      severity: (item?.severity ?? 'info') as any,
+      severity: (item?.severity ?? 'info') as 'info' | 'warning' | 'error' | 'success',
     }));
-  }, [attentionQuery.data]);
+  }, [attentionState.data]);
 
   const handleRefresh = () => {
-    queryResults.forEach((q) => q.refetch());
+    dispatch(fetchDashboardOverview(rangeMode));
+    dispatch(fetchDashboardGraph({ metric: graphMode, range: rangeMode }));
+    dispatch(fetchDashboardActivity(12));
+    dispatch(fetchDashboardAttention());
   };
+
+  const isAnyLoading = overview.loading || graph.loading || activity.loading || attentionState.loading;
+  const isAnyError = !!(overview.error || graph.error || activity.error || attentionState.error);
 
   return (
     <DashboardContent maxWidth="xl">
@@ -92,14 +112,14 @@ export function OverviewView() {
         rangeMode={rangeMode}
         onRangeChange={(v) => setRangeMode(v)}
         onRefresh={handleRefresh}
-        loading={queryResults.some(q => q.isFetching)}
+        loading={isAnyLoading}
       />
 
       <Stack spacing={4}>
         <OverviewKpiGrid
           kpis={kpis}
-          loading={overviewQuery.isLoading}
-          error={overviewQuery.isError}
+          loading={overview.loading}
+          error={!!overview.error}
         />
 
         <Stack direction="row" alignItems="center" justifyContent="space-between">
@@ -128,15 +148,15 @@ export function OverviewView() {
             {viewMode === 'graphs' ? (
               <OverviewGraphPanel
                 data={graphData}
-                loading={graphQuery.isLoading}
-                error={graphQuery.isError}
+                loading={graph.loading}
+                error={!!graph.error}
                 activeMode={graphMode}
                 onModeChange={(v) => setGraphMode(v)}
               />
             ) : (
               <OverviewActivityFeed
                 activities={activities}
-                loading={activityQuery.isLoading}
+                loading={activity.loading}
               />
             )}
           </Grid>
@@ -146,13 +166,13 @@ export function OverviewView() {
               <OverviewAttentionPanel
                 attention={attention}
                 sourceStatus={sourceStatus}
-                loading={attentionQuery.isLoading || overviewQuery.isLoading}
+                loading={attentionState.loading || overview.loading}
               />
             </Grid>
           )}
         </Grid>
 
-        {queryResults.some(q => q.isError) && (
+        {isAnyError && (
           <OverviewErrorState
             severity="warning"
             message="Some dashboard modules are currently unavailable. We are still showing the data we could retrieve."

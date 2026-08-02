@@ -1,7 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  selectBooking, 
+  fetchPublicBookingTypeThunk, 
+  fetchAvailableSlotsThunk, 
+  createPublicAppointmentThunk 
+} from 'src/store/slices/booking-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -15,9 +21,6 @@ import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { fCurrency } from 'src/utils/format-number';
-
-import { bookingService } from 'src/services/booking-service';
-
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
@@ -29,18 +32,26 @@ type Props = {
 };
 
 export function PublicBookingView({ bookingLink, userId, serviceId }: Props) {
+  const dispatch = useAppDispatch();
+  const { publicBooking } = useAppSelector(selectBooking);
+  const { type: bookingType, loading, slots } = publicBooking;
+
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
-  const { data: bookingType, isLoading } = useQuery({
-    queryKey: ['public-booking-type', bookingLink || serviceId],
-    queryFn: () => bookingLink 
-      ? bookingService.getBookingTypeByLink(bookingLink)
-      : bookingService.getBookingType(serviceId!),
-    enabled: Boolean(bookingLink || serviceId),
-  });
+  useEffect(() => {
+    if (bookingLink || serviceId) {
+      dispatch(fetchPublicBookingTypeThunk({ link: bookingLink, id: serviceId }));
+    }
+  }, [dispatch, bookingLink, serviceId]);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (selectedDate && bookingType?.id) {
+      dispatch(fetchAvailableSlotsThunk({ typeId: bookingType.id, date: selectedDate }));
+    }
+  }, [dispatch, selectedDate, bookingType?.id]);
+
+  if (loading && !bookingType) {
     return (
       <Box sx={{ py: 15, textAlign: 'center' }}>
         <CircularProgress />

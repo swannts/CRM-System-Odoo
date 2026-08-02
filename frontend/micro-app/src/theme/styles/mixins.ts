@@ -9,19 +9,23 @@ import { remToPx, varAlpha, mediaQueries } from './utils';
 
 // ----------------------------------------------------------------------
 
+import type { Theme, CSSObject } from '@mui/material/styles';
+
+// ----------------------------------------------------------------------
+
 /**
  * Usage:
  * ...hideScrollX,
  * ...hideScrollY,
  */
-export const hideScrollX = {
+export const hideScrollX: CSSObject = {
   msOverflowStyle: 'none',
   scrollbarWidth: 'none',
   overflowX: 'auto',
   '&::-webkit-scrollbar': { display: 'none' },
 };
 
-export const hideScrollY = {
+export const hideScrollY: CSSObject = {
   msOverflowStyle: 'none',
   scrollbarWidth: 'none',
   overflowY: 'auto',
@@ -32,7 +36,7 @@ export const hideScrollY = {
  * Usage:
  * ...textGradient(`to right, ${theme.vars.palette.text.primary}, ${alpha(theme.vars.palette.text.primary, 0.2)}`
  */
-export function textGradient(color) {
+export function textGradient(color: string): CSSObject {
   return {
     background: `linear-gradient(${color})`,
     WebkitBackgroundClip: 'text',
@@ -47,7 +51,7 @@ export function textGradient(color) {
  * Usage:
  * ...borderGradient({ color: `to right, ${theme.vars.palette.text.primary}, ${alpha(theme.vars.palette.text.primary, 0.2)}`, padding: '4px' }),
  */
-export function borderGradient(props) {
+export function borderGradient(props?: { color?: string; padding?: string }): CSSObject {
   return {
     inset: 0,
     width: '100%',
@@ -72,7 +76,7 @@ export function borderGradient(props) {
  * Usage:
  * ...bgGradient({ color: `to right, ${theme.vars.palette.grey[900]} 25%, ${varAlpha(theme.vars.palette.primary.darkerChannel, 0.88)}`, imgUrl: '/assets/background/overlay.png' }),
  */
-export function bgGradient({ color, imgUrl }: any) {
+export function bgGradient({ color, imgUrl }: { color: string; imgUrl?: string }): CSSObject {
   if (imgUrl) {
     return {
       background: `linear-gradient(${color}), url(${imgUrl})`,
@@ -88,7 +92,7 @@ export function bgGradient({ color, imgUrl }: any) {
  * Usage:
  * ...bgBlur({ color: `varAlpha(theme.vars.palette.background.paperChannel, 0.8)`, imgUrl: '/assets/background/overlay.png', blur: 6 }),
  */
-export function bgBlur({ color, blur = 6, imgUrl }: any) {
+export function bgBlur({ color, blur = 6, imgUrl }: { color?: string; blur?: number; imgUrl?: string }): CSSObject {
   if (imgUrl) {
     return {
       position: 'relative',
@@ -118,19 +122,19 @@ export function bgBlur({ color, blur = 6, imgUrl }: any) {
  * Usage:
  * ...maxLine({ line: 2, persistent: theme.typography.caption }),
  */
-function getFontSize(fontSize) {
+function getFontSize(fontSize: any): number {
   return typeof fontSize === 'string' ? remToPx(fontSize) : fontSize;
 }
 
-function getLineHeight(lineHeight, fontSize) {
+function getLineHeight(lineHeight: any, fontSize?: number): number {
   if (typeof lineHeight === 'string') {
     return fontSize ? remToPx(lineHeight) / fontSize : 1;
   }
   return lineHeight;
 }
 
-export function maxLine({ line, persistent }) {
-  const baseStyles = {
+export function maxLine({ line, persistent }: { line: number; persistent?: any }): CSSObject {
+  const baseStyles: CSSObject = {
     overflow: 'hidden',
     display: '-webkit-box',
     textOverflow: 'ellipsis',
@@ -170,10 +174,10 @@ export function maxLine({ line, persistent }) {
  * Usage:
  * ...paper({ theme, color: varAlpha(theme.vars.palette.background.paperChannel, 0.9), dropdown: true }),
  */
-export function paper({ theme, color, dropdown }) {
+export function paper({ theme, color, dropdown }: { theme: Theme; color?: string; dropdown?: boolean }): CSSObject {
   return {
     ...bgBlur({
-      color: color ?? varAlpha(theme.vars.palette.background.paperChannel, 0.9),
+      color: color ?? (theme.vars.palette.background.paperChannel ? varAlpha(theme.vars.palette.background.paperChannel, 0.9) : undefined),
       blur: 20,
     }),
     backgroundImage: `url(${CONFIG.site.basePath}/assets/cyan-blur.png), url(${CONFIG.site.basePath}/assets/red-blur.png)`,
@@ -185,7 +189,7 @@ export function paper({ theme, color, dropdown }) {
     }),
     ...(dropdown && {
       padding: theme.spacing(0.5),
-      boxShadow: theme.customShadows.dropdown,
+      boxShadow: theme.customShadows?.dropdown,
       borderRadius: `${theme.shape.borderRadius * 1.25}px`,
     }),
   };
@@ -195,7 +199,7 @@ export function paper({ theme, color, dropdown }) {
  * Usage:
  * ...menuItem(theme)
  */
-export function menuItem(theme) {
+export function menuItem(theme: Theme): CSSObject {
   return {
     ...theme.typography.body2,
     padding: theme.spacing(0.75, 1),

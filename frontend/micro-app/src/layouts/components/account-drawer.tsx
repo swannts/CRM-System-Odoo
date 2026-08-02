@@ -8,7 +8,7 @@ import Avatar from '@mui/material/Avatar';
 import Drawer from '@mui/material/Drawer';
 import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
-import { useTheme } from '@mui/material/styles';
+import { useTheme, type Theme, type SxProps } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 
@@ -29,9 +29,16 @@ import { UpgradeBlock } from './nav-upgrade';
 import { AccountButton } from './account-button';
 import { SignOutButton } from './sign-out-button';
 
+import type { AccountNavItem } from '../types';
+
 // ----------------------------------------------------------------------
 
-export function AccountDrawer({ data = [], sx, ...other }) {
+type Props = {
+  data?: AccountNavItem[];
+  sx?: SxProps<Theme>;
+};
+
+export function AccountDrawer({ data = [], sx, ...other }: Props) {
   const theme = useTheme();
 
   const router = useRouter();

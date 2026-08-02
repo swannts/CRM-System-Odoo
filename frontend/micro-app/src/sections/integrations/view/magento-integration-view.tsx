@@ -9,7 +9,16 @@ import type {
   MagentoListResponse,
 } from 'src/types/magento';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchMagentoOrders,
+  fetchMagentoStores,
+  fetchMagentoProducts,
+  fetchMagentoCustomers,
+  fetchMagentoConnection,
+  fetchMagentoDownstreamHealth,
+} from 'src/store/slices/magento-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -34,13 +43,7 @@ import TableContainer from '@mui/material/TableContainer';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import {
-  useMagentoOrders,
-  useMagentoStores,
-  useMagentoProducts,
-  useMagentoCustomers,
-  useMagentoConnection,
   useConnectMagentoMutation,
-  useMagentoDownstreamHealth,
   useDisconnectMagentoMutation,
   useSyncMagentoOrdersMutation,
   useSyncMagentoCustomersMutation,
@@ -68,16 +71,8 @@ function formatCurrency(value?: number | string): string {
   return numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function getListData<T>(payload: ListPayload<T>): { items: T[]; totalCount?: number } {
-  if (!payload) return { items: [] };
-  if (Array.isArray(payload)) return { items: payload, totalCount: payload.length };
-  return {
-    items: Array.isArray(payload.items) ? payload.items : [],
-    totalCount: payload.total_count,
-  };
-}
-
 export function MagentoIntegrationView() {
+  const dispatch = useAppDispatch();
   const [previewTab, setPreviewTab] = useState<PreviewTab>('stores');
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [pendingSyncAction, setPendingSyncAction] = useState<SyncAction | null>(null);
@@ -89,43 +84,43 @@ export function MagentoIntegrationView() {
     storeCode: '',
   });
 
-  const connectionQuery = useMagentoConnection();
-  const healthQuery = useMagentoDownstreamHealth();
-  const storesQuery = useMagentoStores();
-  const productsQuery = useMagentoProducts({ page: 1, pageSize: 20 });
-  const customersQuery = useMagentoCustomers({ page: 1, pageSize: 20 });
-  const ordersQuery = useMagentoOrders({ page: 1, pageSize: 20 });
+  const magentoState = useAppSelector((state) => state.magento);
+  const { connection, health, stores, products, customers, orders } = magentoState;
+
+  useEffect(() => {
+    dispatch(fetchMagentoConnection());
+    dispatch(fetchMagentoDownstreamHealth());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (previewTab === 'stores') dispatch(fetchMagentoStores());
+    if (previewTab === 'products') dispatch(fetchMagentoProducts({ page: 1, pageSize: 20 }));
+    if (previewTab === 'customers') dispatch(fetchMagentoCustomers({ page: 1, pageSize: 20 }));
+    if (previewTab === 'orders') dispatch(fetchMagentoOrders({ page: 1, pageSize: 20 }));
+  }, [dispatch, previewTab]);
 
   const connectMutation = useConnectMagentoMutation();
   const disconnectMutation = useDisconnectMagentoMutation();
   const syncCustomersMutation = useSyncMagentoCustomersMutation();
   const syncOrdersMutation = useSyncMagentoOrdersMutation();
 
-  const isConnected = Boolean(connectionQuery.data?.connected);
+  const isConnected = Boolean(connection.data?.connected);
 
-  const productsData = useMemo(
-    () => getListData<MagentoProduct>(productsQuery.data),
-    [productsQuery.data]
-  );
-  const customersData = useMemo(
-    () => getListData<MagentoCustomer>(customersQuery.data),
-    [customersQuery.data]
-  );
-  const ordersData = useMemo(() => getListData<MagentoOrder>(ordersQuery.data), [ordersQuery.data]);
-
-  const currentPreviewQuery =
-    previewTab === 'stores'
-      ? storesQuery
-      : previewTab === 'products'
-        ? productsQuery
-        : previewTab === 'customers'
-          ? customersQuery
-          : ordersQuery;
+  const currentPreviewQuery = useMemo(() => {
+    switch (previewTab) {
+      case 'stores': return stores;
+      case 'products': return products;
+      case 'customers': return customers;
+      case 'orders': return orders;
+      default: return stores;
+    }
+  }, [previewTab, stores, products, customers, orders]);
 
   const isSyncing = syncCustomersMutation.isPending || syncOrdersMutation.isPending;
 
   const handleRefreshStatus = async () => {
-    await Promise.all([connectionQuery.refetch(), healthQuery.refetch()]);
+    dispatch(fetchMagentoConnection());
+    dispatch(fetchMagentoDownstreamHealth());
   };
 
   const handleConnect = async () => {
@@ -142,6 +137,7 @@ export function MagentoIntegrationView() {
       });
       setConnectForm((prev) => ({ ...prev, accessToken: '' }));
       toast.success('Magento connection updated.');
+      dispatch(fetchMagentoConnection());
     } catch (error: any) {
       toast.error(error?.message || 'Failed to connect Magento.');
     }
@@ -152,6 +148,7 @@ export function MagentoIntegrationView() {
       await disconnectMutation.mutateAsync();
       setLatestSyncResult(null);
       toast.success('Magento disconnected.');
+      dispatch(fetchMagentoConnection());
     } catch (error: any) {
       toast.error(error?.message || 'Failed to disconnect Magento.');
     }
@@ -262,19 +259,19 @@ export function MagentoIntegrationView() {
               Status
             </Typography>
 
-            {connectionQuery.isLoading ? (
+            {connection.loading ? (
               <CircularProgress size={20} />
-            ) : connectionQuery.isError ? (
-              <Alert severity="error">{(connectionQuery.error as Error).message}</Alert>
+            ) : connection.error ? (
+              <Alert severity="error">{connection.error}</Alert>
             ) : (
               <Stack spacing={1.25}>
                 <Typography variant="body2">
                   Connected: <strong>{isConnected ? 'Yes' : 'No'}</strong>
                 </Typography>
-                <Typography variant="body2">Base URL: {connectionQuery.data?.baseUrl || '-'}</Typography>
-                <Typography variant="body2">Store code: {connectionQuery.data?.storeCode || '-'}</Typography>
+                <Typography variant="body2">Base URL: {connection.data?.baseUrl || '-'}</Typography>
+                <Typography variant="body2">Store code: {connection.data?.storeCode || '-'}</Typography>
                 <Typography variant="body2">
-                  Last checked: {formatDate(connectionQuery.data?.lastCheckedAt)}
+                  Last checked: {formatDate(connection.data?.lastCheckedAt)}
                 </Typography>
               </Stack>
             )}
@@ -284,26 +281,26 @@ export function MagentoIntegrationView() {
                 Downstream health
               </Typography>
 
-              {healthQuery.isLoading ? (
+              {health.loading ? (
                 <CircularProgress size={20} />
-              ) : healthQuery.isError ? (
-                <Alert severity="error">{(healthQuery.error as Error).message}</Alert>
+              ) : health.error ? (
+                <Alert severity="error">{health.error}</Alert>
               ) : (
                 <Stack spacing={1}>
                   <Typography variant="body2">
                     CRM health:{' '}
-                    {healthQuery.data?.crm
-                      ? healthQuery.data.crm.ok
+                    {health.data?.crm
+                      ? health.data.crm.ok
                         ? 'Healthy'
-                        : healthQuery.data.crm.message || 'Unreachable'
+                        : health.data.crm.message || 'Unreachable'
                       : '-'}
                   </Typography>
                   <Typography variant="body2">
                     Billing health:{' '}
-                    {healthQuery.data?.billing
-                      ? healthQuery.data.billing.ok
+                    {health.data?.billing
+                      ? health.data.billing.ok
                         ? 'Healthy'
-                        : healthQuery.data.billing.message || 'Unreachable'
+                        : health.data.billing.message || 'Unreachable'
                       : '-'}
                   </Typography>
                 </Stack>
@@ -331,18 +328,18 @@ export function MagentoIntegrationView() {
               </Alert>
             )}
 
-            {currentPreviewQuery.isLoading ? (
+            {currentPreviewQuery.loading ? (
               <CircularProgress size={24} />
-            ) : currentPreviewQuery.isError ? (
-              <Alert severity="error">{(currentPreviewQuery.error as Error).message}</Alert>
+            ) : currentPreviewQuery.error ? (
+              <Alert severity="error">{currentPreviewQuery.error}</Alert>
             ) : previewTab === 'stores' ? (
-              <StoresTable stores={storesQuery.data || []} />
+              <StoresTable stores={stores.data || []} />
             ) : previewTab === 'products' ? (
-              <ProductsTable items={productsData.items} totalCount={productsData.totalCount} />
+              <ProductsTable items={products.data} totalCount={products.total} />
             ) : previewTab === 'customers' ? (
-              <CustomersTable items={customersData.items} totalCount={customersData.totalCount} />
+              <CustomersTable items={customers.data} totalCount={customers.total} />
             ) : (
-              <OrdersTable items={ordersData.items} totalCount={ordersData.totalCount} />
+              <OrdersTable items={orders.data} totalCount={orders.total} />
             )}
           </Card>
         </Grid>

@@ -2,6 +2,8 @@ import { cloneElement } from 'react';
 
 import { RouterLink } from 'src/routes/components';
 
+import { NavItemProps, NavItemStateProps } from './types';
+
 // ----------------------------------------------------------------------
 
 export function useNavItem({
@@ -13,7 +15,7 @@ export function useNavItem({
   hasChild,
   externalLink,
   enabledRootRedirect,
-}) {
+}: NavItemProps & NavItemStateProps) {
   const rootItem = depth === 1;
 
   const subItem = !rootItem;

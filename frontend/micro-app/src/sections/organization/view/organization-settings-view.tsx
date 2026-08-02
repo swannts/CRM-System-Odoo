@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchOrgDetailsThunk, selectOrganization } from 'src/store/slices/organization-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -19,8 +20,6 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { paths } from 'src/routes/paths';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { organizationService } from 'src/services/organization-service';
-
 import { Iconify } from 'src/components/iconify';
 
 import { IntegrationAdp } from '../integration-adp';
@@ -31,13 +30,17 @@ import { OrganizationUserManagementView } from './organization-user-management-v
 
 export function OrganizationSettingsView() {
   const [currentTab, setCurrentTab] = useState('general');
+  const dispatch = useAppDispatch();
+  const { orgDetails } = useAppSelector(selectOrganization);
 
-  const { data: organization, isLoading } = useQuery({
-    queryKey: ['org-details'],
-    queryFn: () => organizationService.getOrganizationDetails(),
-  });
+  useEffect(() => {
+    dispatch(fetchOrgDetailsThunk());
+  }, [dispatch]);
 
-  if (isLoading) {
+  const organization = orgDetails.data;
+  const isLoading = orgDetails.loading;
+
+  if (isLoading && !organization) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <LinearProgress />
@@ -120,21 +123,21 @@ export function OrganizationSettingsView() {
               </Typography>
            </Grid>
            <Grid item xs={12} md={8}>
-                     <Card sx={{ p: 3, mb: 3 }}>
-                        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-                           <Box>
-                              <Typography variant="h6">Magento Integration</Typography>
-                              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                                 Magento is now the eCommerce source of truth for catalog, checkout, and orders.
-                              </Typography>
-                           </Box>
-                           <Button component={Link} href={paths.public.magentoIntegration} variant="contained">
-                              Open Magento
-                           </Button>
-                        </Stack>
-                     </Card>
-              <IntegrationAdp />
-           </Grid>
+                      <Card sx={{ p: 3, mb: 3 }}>
+                         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+                            <Box>
+                               <Typography variant="h6">Magento Integration</Typography>
+                               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                  Magento is now the eCommerce source of truth for catalog, checkout, and orders.
+                               </Typography>
+                            </Box>
+                            <Button component={Link} href={paths.public.magentoIntegration} variant="contained">
+                               Open Magento
+                            </Button>
+                         </Stack>
+                      </Card>
+               <IntegrationAdp />
+            </Grid>
         </Grid>
       )}
     </DashboardContent>

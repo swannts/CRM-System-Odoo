@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchOdooCampaigns, fetchOdooAnalytics, selectMarketing } from 'src/store/slices/marketing-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -15,17 +17,25 @@ import Typography from '@mui/material/Typography';
 import { paths } from 'src/routes/paths';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { marketingService } from 'src/services/marketing-service';
 
 import { Iconify } from 'src/components/iconify';
 
 import { MarketingSummaryCard } from '../marketing-summary-card';
 
 export function MarketingOverviewView() {
-  const campaignsQuery = useQuery({ queryKey: ['marketing-campaigns-overview'], queryFn: () => marketingService.getCampaigns({ pageSize: 8 }) });
-  const analyticsQuery = useQuery({ queryKey: ['marketing-analytics-overview'], queryFn: () => marketingService.getAnalytics() });
+  const dispatch = useAppDispatch();
+  const marketingState = useAppSelector(selectMarketing);
 
-  if (campaignsQuery.isLoading || analyticsQuery.isLoading) {
+  const { odooCampaigns: campaignsData, odooAnalytics: analyticsData } = marketingState;
+
+  useEffect(() => {
+    dispatch(fetchOdooCampaigns({ pageSize: 8 }));
+    dispatch(fetchOdooAnalytics());
+  }, [dispatch]);
+
+  const isLoading = campaignsData.loading || analyticsData.loading;
+
+  if (isLoading && campaignsData.data.length === 0) {
     return (
       <DashboardContent maxWidth="xl">
         <Skeleton variant="text" width={260} height={40} />
@@ -38,8 +48,8 @@ export function MarketingOverviewView() {
     );
   }
 
-  const campaigns = Array.isArray(campaignsQuery.data) ? campaignsQuery.data : [];
-  const analytics = analyticsQuery.data;
+  const campaigns = Array.isArray(campaignsData.data) ? campaignsData.data : [];
+  const analytics = analyticsData.data;
 
   return (
     <DashboardContent maxWidth="xl">

@@ -1,3 +1,7 @@
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchActivity, selectMarketing } from 'src/store/slices/marketing-slice';
+
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
@@ -7,12 +11,19 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { Iconify } from 'src/components/iconify';
 import { fToNow } from 'src/utils/format-time';
-import { useMarketingActivity } from './hooks/use-marketing';
 
 // ----------------------------------------------------------------------
 
 export function MarketingRecentActivity() {
-  const { data: activities = [], isLoading } = useMarketingActivity();
+  const dispatch = useAppDispatch();
+  const { activity } = useAppSelector(selectMarketing);
+
+  const activities = activity.data;
+  const isLoading = activity.loading;
+
+  useEffect(() => {
+    dispatch(fetchActivity());
+  }, [dispatch]);
 
   const getIcon = (type: string) => {
     switch (type) {

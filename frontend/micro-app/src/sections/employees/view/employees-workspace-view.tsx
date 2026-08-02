@@ -1,7 +1,21 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchEmployeesThunk,
+  fetchDepartmentsThunk,
+  fetchEmployeeSummaryThunk,
+  fetchAttendanceThunk,
+  fetchLeavesThunk,
+  fetchEmployeeDocumentsThunk,
+  fetchEmployeeRolesThunk,
+  fetchEmployeeSettingsThunk,
+  createEmployeeThunk,
+  updateEmployeeThunk,
+  archiveEmployeeThunk,
+  selectEmployees,
+} from 'src/store/slices/employee-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -26,6 +40,7 @@ import IconButton from '@mui/material/IconButton';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 import { Iconify } from 'src/components/iconify';
+import { toast } from 'src/components/snackbar';
 
 import { Employee } from '../types';
 import { employeesService } from '../services/employees-service';
@@ -47,6 +62,9 @@ const TABS = [
 type TabType = (typeof TABS)[number];
 
 export function EmployeesWorkspaceView() {
+  const dispatch = useAppDispatch();
+  const { employees, departments, summary, attendance, leaves, documents, roles, settings } = useAppSelector(selectEmployees);
+
   const [tab, setTab] = useState<TabType>('overview');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
@@ -68,122 +86,49 @@ export function EmployeesWorkspaceView() {
     documentTypes: '',
   });
   const [settingsFormError, setSettingsFormError] = useState('');
-  const queryClient = useQueryClient();
 
-  const employeesQuery = useQuery({
-    queryKey: ['employees-directory', search, status],
-    queryFn: () =>
-      employeesService.getEmployees({
-        page: 1,
-        pageSize: 200,
-        search,
-        type: status === 'all' ? undefined : status,
-      }),
-  });
+  const loadData = useCallback(() => {
+    dispatch(fetchEmployeesThunk({
+      page: 1,
+      pageSize: 200,
+      search,
+      type: status === 'all' ? undefined : status,
+    }));
+    dispatch(fetchDepartmentsThunk());
+    dispatch(fetchEmployeeSummaryThunk());
+    
+    if (tab === 'attendance' || tab === 'overview') {
+      dispatch(fetchAttendanceThunk({ page: 1, pageSize: 100 }));
+    }
+    if (tab === 'time_off' || tab === 'overview') {
+      dispatch(fetchLeavesThunk({ page: 1, pageSize: 100 }));
+    }
+    if (tab === 'roles_access') {
+      dispatch(fetchEmployeeRolesThunk());
+    }
+    if (tab === 'settings') {
+      dispatch(fetchEmployeeSettingsThunk());
+    }
+  }, [dispatch, search, status, tab]);
 
-  const departmentsQuery = useQuery({
-    queryKey: ['employees-departments'],
-    queryFn: employeesService.getDepartments,
-  });
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  const summaryQuery = useQuery({
-    queryKey: ['employees-summary'],
-    queryFn: employeesService.getEmployeeSummary,
-  });
-
-  const attendanceQuery = useQuery({
-    queryKey: ['employees-attendance'],
-    queryFn: () => employeesService.getAttendance({ page: 1, pageSize: 100 }),
-    enabled: tab === 'attendance' || tab === 'overview',
-  });
-
-  const timeOffQuery = useQuery({
-    queryKey: ['employees-timeoff'],
-    queryFn: () => employeesService.getTimeOffRequests({ page: 1, pageSize: 100 }),
-    enabled: tab === 'time_off' || tab === 'overview',
-  });
-
-  const employeeDocumentsQuery = useQuery({
-    queryKey: ['employee-documents', documentEmployeeId],
-    queryFn: () => employeesService.getEmployeeDocuments(documentEmployeeId),
-    enabled: tab === 'documents' && Boolean(documentEmployeeId),
-  });
-
-  const rolesQuery = useQuery({
-    queryKey: ['employees-roles'],
-    queryFn: employeesService.getRoles,
-    enabled: tab === 'roles_access',
-  });
-
-  const settingsQuery = useQuery({
-    queryKey: ['employees-settings'],
-    queryFn: employeesService.getSettings,
-    enabled: tab === 'settings',
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (payload: any) => employeesService.createEmployee(payload),
-    onSuccess: async () => {
-      setOpenCreate(false);
-      setForm({ firstName: '', lastName: '', email: '', phone: '', jobTitle: '', departmentId: '' });
-      await queryClient.invalidateQueries({ queryKey: ['employees-directory'] });
-      await queryClient.invalidateQueries({ queryKey: ['employees-summary'] });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: any }) => employeesService.updateEmployee(id, payload),
-    onSuccess: async () => {
-      setEditEmployee(null);
-      await queryClient.invalidateQueries({ queryKey: ['employees-directory'] });
-      await queryClient.invalidateQueries({ queryKey: ['employees-summary'] });
-    },
-  });
-
-  const archiveMutation = useMutation({
-    mutationFn: (id: string) => employeesService.archiveEmployee(id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['employees-directory'] });
-      await queryClient.invalidateQueries({ queryKey: ['employees-summary'] });
-    },
-  });
-
-  const uploadDocumentMutation = useMutation({
-    mutationFn: (payload: any) => employeesService.uploadEmployeeDocument(documentEmployeeId, payload),
-    onSuccess: async () => {
-      setDocumentName('');
-      setDocumentUrl('');
-      await queryClient.invalidateQueries({ queryKey: ['employee-documents', documentEmployeeId] });
-    },
-  });
-
-  const deleteDocumentMutation = useMutation({
-    mutationFn: (id: string) => employeesService.deleteEmployeeDocument(documentEmployeeId, id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['employee-documents', documentEmployeeId] });
-    },
-  });
-
-  const assignRoleMutation = useMutation({
-    mutationFn: ({ employeeId, roleId }: { employeeId: string; roleId: string }) =>
-      employeesService.assignRole(employeeId, roleId),
-  });
-
-  const saveSettingsMutation = useMutation({
-    mutationFn: (payload: any) => employeesService.updateSettings(payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['employees-settings'] });
-    },
-  });
+  useEffect(() => {
+    if (tab === 'documents' && documentEmployeeId) {
+      dispatch(fetchEmployeeDocumentsThunk(documentEmployeeId));
+    }
+  }, [dispatch, tab, documentEmployeeId]);
 
   const filteredEmployees = useMemo(() => {
-    const rows = employeesQuery.data?.data || [];
+    const rows = employees.data || [];
     return rows.filter((e) => {
       const departmentMatch = department === 'all' || e.departmentId === department;
       const employmentMatch = employmentType === 'all' || e.employmentType === employmentType;
       return departmentMatch && employmentMatch;
     });
-  }, [employeesQuery.data?.data, department, employmentType]);
+  }, [employees.data, department, employmentType]);
 
   const openCreateDialog = () => {
     setForm({ firstName: '', lastName: '', email: '', phone: '', jobTitle: '', departmentId: '' });
@@ -205,33 +150,98 @@ export function EmployeesWorkspaceView() {
   const submitCreate = async () => {
     const fullName = `${form.firstName || ''} ${form.lastName || ''}`.trim();
     if (!fullName && !form.email) return;
-    await createMutation.mutateAsync({
-      name: fullName || form.email,
-      work_email: form.email || undefined,
-      work_phone: form.phone || undefined,
-      job_title: form.jobTitle || undefined,
-      department_id: form.departmentId ? Number(form.departmentId) : undefined,
-    });
+    try {
+      await dispatch(createEmployeeThunk({
+        name: fullName || form.email,
+        work_email: form.email || undefined,
+        work_phone: form.phone || undefined,
+        job_title: form.jobTitle || undefined,
+        department_id: form.departmentId ? Number(form.departmentId) : undefined,
+      })).unwrap();
+      setOpenCreate(false);
+      loadData();
+      toast.success('Employee created successfully');
+    } catch (err: any) {
+      toast.error(err || 'Failed to create employee');
+    }
   };
 
   const submitEdit = async () => {
     if (!editEmployee) return;
     const fullName = `${form.firstName || ''} ${form.lastName || ''}`.trim();
-    await updateMutation.mutateAsync({
-      id: editEmployee.id,
-      payload: {
-        name: fullName || editEmployee.displayName,
-        work_email: form.email || undefined,
-        work_phone: form.phone || undefined,
-        job_title: form.jobTitle || undefined,
-        department_id: form.departmentId ? Number(form.departmentId) : undefined,
-      },
-    });
+    try {
+      await dispatch(updateEmployeeThunk({
+        id: editEmployee.id,
+        payload: {
+          name: fullName || editEmployee.displayName,
+          work_email: form.email || undefined,
+          work_phone: form.phone || undefined,
+          job_title: form.jobTitle || undefined,
+          department_id: form.departmentId ? Number(form.departmentId) : undefined,
+        },
+      })).unwrap();
+      setEditEmployee(null);
+      loadData();
+      toast.success('Employee updated');
+    } catch (err: any) {
+      toast.error(err || 'Failed to update employee');
+    }
   };
 
-  const unavailableBlock = (title: string, description: string) => (
-    <EmployeesUnavailableState title={title} description={description} />
-  );
+  const handleArchive = async (id: string) => {
+    try {
+      await dispatch(archiveEmployeeThunk(id)).unwrap();
+      loadData();
+      toast.success('Employee archived');
+    } catch (err: any) {
+      toast.error(err || 'Failed to archive employee');
+    }
+  };
+
+  const submitUploadDocument = async () => {
+    try {
+      await employeesService.uploadEmployeeDocument(documentEmployeeId, {
+        name: documentName,
+        fileUrl: documentUrl,
+        type: 'other',
+      });
+      setDocumentName('');
+      setDocumentUrl('');
+      dispatch(fetchEmployeeDocumentsThunk(documentEmployeeId));
+      toast.success('Document uploaded');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload document');
+    }
+  };
+
+  const handleDeleteDocument = async (docId: string) => {
+    try {
+      await employeesService.deleteEmployeeDocument(documentEmployeeId, docId);
+      dispatch(fetchEmployeeDocumentsThunk(documentEmployeeId));
+      toast.success('Document deleted');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete document');
+    }
+  };
+
+  const submitAssignRole = async () => {
+    try {
+      await employeesService.assignRole(roleEmployeeId, selectedRoleId);
+      toast.success('Role assigned');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to assign role');
+    }
+  };
+
+  const submitSaveSettings = async (payload: any) => {
+    try {
+      await employeesService.updateSettings(payload);
+      dispatch(fetchEmployeeSettingsThunk());
+      toast.success('Settings saved');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save settings');
+    }
+  };
 
   const parseSettingsField = (value: string, fieldName: string) => {
     const trimmed = value.trim();
@@ -261,37 +271,32 @@ export function EmployeesWorkspaceView() {
 
       <Card sx={{ mb: 3 }}>
         <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
-          <Tab value="overview" label="Overview" />
-          <Tab value="directory" label="Directory" />
-          <Tab value="departments" label="Departments" />
-          <Tab value="roles_access" label="Roles & Access" />
-          <Tab value="attendance" label="Attendance" />
-          <Tab value="time_off" label="Time Off" />
-          <Tab value="documents" label="Documents" />
-          <Tab value="settings" label="Settings" />
+          {TABS.map((t) => (
+            <Tab key={t} value={t} label={t.replace('_', ' ').charAt(0).toUpperCase() + t.replace('_', ' ').slice(1)} />
+          ))}
         </Tabs>
       </Card>
 
       {tab === 'overview' && (
         <Stack spacing={3}>
-          {summaryQuery.isLoading ? <CircularProgress /> : <EmployeesSummaryCards summary={summaryQuery.data} />}
+          {summary.loading ? <CircularProgress /> : <EmployeesSummaryCards summary={summary.data} />}
           <Grid container spacing={2}>
             <Grid item xs={12} md={4}>
               <Card sx={{ p: 2.5 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Recently added employees</Typography>
-                {(employeesQuery.data?.data || []).slice(0, 5).map((e) => (
+                {(employees.data || []).slice(0, 5).map((e: any) => (
                   <Typography key={e.id} variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>
                     {e.displayName || `${e.firstName} ${e.lastName}`.trim() || e.email}
                   </Typography>
                 ))}
-                {(employeesQuery.data?.data || []).length === 0 && <Typography variant="body2" sx={{ color: 'text.secondary' }}>No employees found.</Typography>}
+                {(employees.data || []).length === 0 && <Typography variant="body2" sx={{ color: 'text.secondary' }}>No employees found.</Typography>}
               </Card>
             </Grid>
             <Grid item xs={12} md={4}>
               <Card sx={{ p: 2.5 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Pending approvals</Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {(timeOffQuery.data || []).filter((x) => x.status === 'pending').length} time-off request(s).
+                  {(leaves.data || []).filter((x: any) => x.status === 'pending').length} time-off request(s).
                 </Typography>
               </Card>
             </Grid>
@@ -299,7 +304,7 @@ export function EmployeesWorkspaceView() {
               <Card sx={{ p: 2.5 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Attendance exceptions</Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {(attendanceQuery.data || []).filter((x) => !x.clockOut).length} open attendance session(s).
+                  {(attendance.data || []).filter((x: any) => !x.clockOut).length} open attendance session(s).
                 </Typography>
               </Card>
             </Grid>
@@ -323,36 +328,25 @@ export function EmployeesWorkspaceView() {
               <InputLabel>Department</InputLabel>
               <Select value={department} label="Department" onChange={(e) => setDepartment(String(e.target.value))}>
                 <MenuItem value="all">All departments</MenuItem>
-                {(departmentsQuery.data || []).map((d) => (
+                {(departments.data || []).map((d: any) => (
                   <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
-            <FormControl size="small">
-              <InputLabel>Employment Type</InputLabel>
-              <Select value={employmentType} label="Employment Type" onChange={(e) => setEmploymentType(String(e.target.value))}>
-                <MenuItem value="all">All types</MenuItem>
-                <MenuItem value="full_time">Full time</MenuItem>
-                <MenuItem value="part_time">Part time</MenuItem>
-                <MenuItem value="contractor">Contractor</MenuItem>
-                <MenuItem value="intern">Intern</MenuItem>
-                <MenuItem value="temporary">Temporary</MenuItem>
-              </Select>
-            </FormControl>
           </Stack>
 
-          {employeesQuery.isLoading && <CircularProgress />}
-          {employeesQuery.isError && (
+          {employees.loading && <CircularProgress />}
+          {employees.error && (
             <EmployeesErrorState title="Directory unavailable" description="Unable to load employees right now." />
           )}
-          {!employeesQuery.isLoading && !employeesQuery.isError && filteredEmployees.length === 0 && (
+          {!employees.loading && !employees.error && filteredEmployees.length === 0 && (
             <EmployeesEmptyState title="No employees found" description="Try adjusting your search or filters." />
           )}
-          {!employeesQuery.isLoading && !employeesQuery.isError && filteredEmployees.length > 0 && (
+          {!employees.loading && !employees.error && filteredEmployees.length > 0 && (
             <EmployeesDirectoryTable
               rows={filteredEmployees}
               onEdit={openEditDialog}
-              onArchive={(employee) => archiveMutation.mutate(employee.id)}
+              onArchive={(employee) => handleArchive(employee.id)}
             />
           )}
         </Card>
@@ -360,14 +354,14 @@ export function EmployeesWorkspaceView() {
 
       {tab === 'departments' && (
         <Card sx={{ p: 2.5 }}>
-          {departmentsQuery.isLoading && <CircularProgress />}
-          {departmentsQuery.isError && unavailableBlock('Departments unavailable', 'Department management endpoint is currently unavailable.')}
-          {!departmentsQuery.isLoading && !departmentsQuery.isError && (departmentsQuery.data || []).length === 0 && (
+          {departments.loading && <CircularProgress />}
+          {departments.error && <EmployeesUnavailableState title="Departments unavailable" description="Department management endpoint is currently unavailable." />}
+          {!departments.loading && !departments.error && (departments.data || []).length === 0 && (
             <EmployeesEmptyState title="No departments" description="Create a department to organize employees." />
           )}
-          {!departmentsQuery.isLoading && !departmentsQuery.isError && (departmentsQuery.data || []).length > 0 && (
+          {!departments.loading && !departments.error && (departments.data || []).length > 0 && (
             <Stack spacing={1}>
-              {departmentsQuery.data?.map((d) => (
+              {departments.data?.map((d: any) => (
                 <Card key={d.id} variant="outlined" sx={{ p: 1.5 }}>
                   <Typography variant="subtitle2">{d.name}</Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -382,16 +376,16 @@ export function EmployeesWorkspaceView() {
 
       {tab === 'roles_access' && (
         <Card sx={{ p: 2.5 }}>
-          {rolesQuery.isLoading && <CircularProgress />}
-          {rolesQuery.isError && unavailableBlock('Roles & access unavailable', 'Role and access management is not available yet.')}
-          {!rolesQuery.isLoading && !rolesQuery.isError && (
+          {roles.loading && <CircularProgress />}
+          {roles.error && <EmployeesUnavailableState title="Roles & access unavailable" description="Role and access management is not available yet." />}
+          {!roles.loading && !roles.error && (
             <Stack spacing={2}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
                 <FormControl size="small" sx={{ minWidth: 260 }}>
                   <InputLabel>Employee</InputLabel>
                   <Select value={roleEmployeeId} label="Employee" onChange={(e) => setRoleEmployeeId(String(e.target.value))}>
                     <MenuItem value="">Select employee</MenuItem>
-                    {(employeesQuery.data?.data || []).map((e) => (
+                    {(employees.data || []).map((e: any) => (
                       <MenuItem key={e.id} value={e.id}>
                         {e.displayName || `${e.firstName} ${e.lastName}`.trim() || e.email || e.id}
                       </MenuItem>
@@ -402,7 +396,7 @@ export function EmployeesWorkspaceView() {
                   <InputLabel>Role</InputLabel>
                   <Select value={selectedRoleId} label="Role" onChange={(e) => setSelectedRoleId(String(e.target.value))}>
                     <MenuItem value="">Select role</MenuItem>
-                    {(rolesQuery.data || []).map((role) => (
+                    {(roles.data || []).map((role: any) => (
                       <MenuItem key={role.id} value={role.id}>
                         {role.name}
                       </MenuItem>
@@ -411,14 +405,14 @@ export function EmployeesWorkspaceView() {
                 </FormControl>
                 <Button
                   variant="contained"
-                  disabled={!roleEmployeeId || !selectedRoleId || assignRoleMutation.isPending}
-                  onClick={() => assignRoleMutation.mutate({ employeeId: roleEmployeeId, roleId: selectedRoleId })}
+                  disabled={!roleEmployeeId || !selectedRoleId}
+                  onClick={submitAssignRole}
                 >
                   Assign role
                 </Button>
               </Stack>
 
-              {(rolesQuery.data || []).length === 0 && (
+              {(roles.data || []).length === 0 && (
                 <EmployeesEmptyState title="No roles available" description="No assignable roles were returned by the backend." />
               )}
             </Stack>
@@ -428,14 +422,14 @@ export function EmployeesWorkspaceView() {
 
       {tab === 'attendance' && (
         <Card sx={{ p: 2.5 }}>
-          {attendanceQuery.isLoading && <CircularProgress />}
-          {attendanceQuery.isError && unavailableBlock('Attendance unavailable', 'Attendance service is currently unavailable.')}
-          {!attendanceQuery.isLoading && !attendanceQuery.isError && (attendanceQuery.data || []).length === 0 && (
+          {attendance.loading && <CircularProgress />}
+          {attendance.error && <EmployeesUnavailableState title="Attendance unavailable" description="Attendance service is currently unavailable." />}
+          {!attendance.loading && !attendance.error && (attendance.data || []).length === 0 && (
             <EmployeesEmptyState title="No attendance records" description="No attendance records were found for the selected range." />
           )}
-          {!attendanceQuery.isLoading && !attendanceQuery.isError && (attendanceQuery.data || []).length > 0 && (
+          {!attendance.loading && !attendance.error && (attendance.data || []).length > 0 && (
             <Stack spacing={1}>
-              {(attendanceQuery.data || []).map((a) => (
+              {(attendance.data || []).map((a: any) => (
                 <Card key={a.id} variant="outlined" sx={{ p: 1.5 }}>
                   <Typography variant="subtitle2">{a.employeeName || 'Employee'}</Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -450,14 +444,14 @@ export function EmployeesWorkspaceView() {
 
       {tab === 'time_off' && (
         <Card sx={{ p: 2.5 }}>
-          {timeOffQuery.isLoading && <CircularProgress />}
-          {timeOffQuery.isError && unavailableBlock('Time off unavailable', 'Time off requests are currently unavailable.')}
-          {!timeOffQuery.isLoading && !timeOffQuery.isError && (timeOffQuery.data || []).length === 0 && (
+          {leaves.loading && <CircularProgress />}
+          {leaves.error && <EmployeesUnavailableState title="Time off unavailable" description="Time off requests are currently unavailable." />}
+          {!leaves.loading && !leaves.error && (leaves.data || []).length === 0 && (
             <EmployeesEmptyState title="No time off requests" description="No pending or historical time off requests found." />
           )}
-          {!timeOffQuery.isLoading && !timeOffQuery.isError && (timeOffQuery.data || []).length > 0 && (
+          {!leaves.loading && !leaves.error && (leaves.data || []).length > 0 && (
             <Stack spacing={1}>
-              {(timeOffQuery.data || []).map((t) => (
+              {(leaves.data || []).map((t: any) => (
                 <Card key={t.id} variant="outlined" sx={{ p: 1.5 }}>
                   <Typography variant="subtitle2">{t.employeeName || 'Employee'} - {t.status}</Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -481,7 +475,7 @@ export function EmployeesWorkspaceView() {
                 onChange={(e) => setDocumentEmployeeId(String(e.target.value))}
               >
                 <MenuItem value="">Select employee</MenuItem>
-                {(employeesQuery.data?.data || []).map((e) => (
+                {(employees.data || []).map((e: any) => (
                   <MenuItem key={e.id} value={e.id}>
                     {e.displayName || `${e.firstName} ${e.lastName}`.trim() || e.email || e.id}
                   </MenuItem>
@@ -506,14 +500,8 @@ export function EmployeesWorkspaceView() {
                 />
                 <Button
                   variant="contained"
-                  onClick={() =>
-                    uploadDocumentMutation.mutate({
-                      name: documentName,
-                      fileUrl: documentUrl,
-                      type: 'other',
-                    })
-                  }
-                  disabled={!documentName || !documentUrl || uploadDocumentMutation.isPending}
+                  onClick={submitUploadDocument}
+                  disabled={!documentName || !documentUrl}
                 >
                   Upload
                 </Button>
@@ -524,16 +512,16 @@ export function EmployeesWorkspaceView() {
               <EmployeesEmptyState title="Select an employee" description="Choose an employee to manage documents." />
             )}
 
-            {documentEmployeeId && employeeDocumentsQuery.isLoading && <CircularProgress />}
-            {documentEmployeeId && employeeDocumentsQuery.isError && (
+            {documentEmployeeId && documents.loading && <CircularProgress />}
+            {documentEmployeeId && documents.error && (
               <EmployeesErrorState title="Documents unavailable" description="Could not load employee documents." />
             )}
-            {documentEmployeeId && !employeeDocumentsQuery.isLoading && !employeeDocumentsQuery.isError && (employeeDocumentsQuery.data || []).length === 0 && (
+            {documentEmployeeId && !documents.loading && !documents.error && (documents.data || []).length === 0 && (
               <EmployeesEmptyState title="No documents" description="No documents are linked to this employee yet." />
             )}
-            {documentEmployeeId && (employeeDocumentsQuery.data || []).length > 0 && (
+            {documentEmployeeId && (documents.data || []).length > 0 && (
               <Stack spacing={1}>
-                {(employeeDocumentsQuery.data || []).map((doc: any) => (
+                {(documents.data || []).map((doc: any) => (
                   <Card key={doc.id} variant="outlined" sx={{ p: 1.5 }}>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
                       <Box>
@@ -548,7 +536,7 @@ export function EmployeesWorkspaceView() {
                             Open
                           </Button>
                         )}
-                        <IconButton size="small" color="error" onClick={() => deleteDocumentMutation.mutate(doc.id)}>
+                        <IconButton size="small" color="error" onClick={() => handleDeleteDocument(doc.id)}>
                           <Iconify icon="solar:trash-bin-trash-bold" width={16} />
                         </IconButton>
                       </Stack>
@@ -560,11 +548,12 @@ export function EmployeesWorkspaceView() {
           </Stack>
         </Card>
       )}
+
       {tab === 'settings' && (
         <Card sx={{ p: 2.5 }}>
-          {settingsQuery.isLoading && <CircularProgress />}
-          {settingsQuery.isError && unavailableBlock('Settings unavailable', 'Employee settings are not available yet.')}
-          {!settingsQuery.isLoading && !settingsQuery.isError && (
+          {settings.loading && <CircularProgress />}
+          {settings.error && <EmployeesUnavailableState title="Settings unavailable" description="Employee settings are not available yet." />}
+          {!settings.loading && !settings.error && (
             <Stack spacing={2}>
               <Alert severity="info">Enter JSON values for each setting. Leave blank to keep unchanged.</Alert>
               <TextField
@@ -609,7 +598,6 @@ export function EmployeesWorkspaceView() {
               />
               <Button
                 variant="contained"
-                disabled={saveSettingsMutation.isPending}
                 onClick={() => {
                   try {
                     setSettingsFormError('');
@@ -620,7 +608,7 @@ export function EmployeesWorkspaceView() {
                       workWeek: parseSettingsField(settingsForm.workWeek, 'Work week'),
                       documentTypes: parseSettingsField(settingsForm.documentTypes, 'Document types'),
                     };
-                    saveSettingsMutation.mutate(payload);
+                    submitSaveSettings(payload);
                   } catch (error: any) {
                     setSettingsFormError(error?.message || 'Invalid settings payload');
                   }
@@ -647,7 +635,7 @@ export function EmployeesWorkspaceView() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
-          <Button variant="contained" onClick={submitCreate} disabled={createMutation.isPending}>Create</Button>
+          <Button variant="contained" onClick={submitCreate}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -664,15 +652,9 @@ export function EmployeesWorkspaceView() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditEmployee(null)}>Cancel</Button>
-          <Button variant="contained" onClick={submitEdit} disabled={updateMutation.isPending}>Save</Button>
+          <Button variant="contained" onClick={submitEdit}>Save</Button>
         </DialogActions>
       </Dialog>
-
-      {(createMutation.isError || updateMutation.isError || archiveMutation.isError) && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          One or more employee actions failed. Please verify required fields and try again.
-        </Alert>
-      )}
     </DashboardContent>
   );
 }

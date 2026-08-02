@@ -1,7 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOmniConversations, 
+  fetchOmniMessages, 
+  sendOmniMessageThunk,
+  assignOmniAgentThunk,
+  updateOmniConversationThunk,
+  suggestOmniReplyThunk,
+  setCurrentConversation,
+  selectOmni 
+} from 'src/store/slices/omnichannel-slice';
+import { fetchMemberships, selectOrganization } from 'src/store/slices/organization-slice';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -19,9 +30,6 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useSocket } from 'src/hooks/use-socket';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniChatService } from 'src/services/omni-service';
-import { organizationService } from 'src/services/organization-service';
-
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 
@@ -55,120 +63,107 @@ function formatParticipantLabel(userId?: string, role?: string) {
 }
 
 export function OmniChatView() {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
   const { user } = useAuthContext();
+  const { conversations, currentConversation } = useAppSelector(selectOmni);
+  const { memberships } = useAppSelector(selectOrganization);
 
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  const { data: conversations = [], isLoading: conversationsLoading } = useQuery({
-    queryKey: ['omni-conversations'],
-    queryFn: () => omniChatService.getConversations(),
-  });
-
-  const { data: memberships = [] } = useQuery({
-    queryKey: ['organization-memberships'],
-    queryFn: () => organizationService.getRoles(),
-  });
-
-  const selectedConversation =
-    conversations.find((conversation: any) => conversation.id === selectedConversationId) || null;
-
-  const { data: messages = [], isLoading: messagesLoading } = useQuery({
-    queryKey: ['omni-messages', selectedConversationId],
-    queryFn: () => omniChatService.getMessages(selectedConversationId!),
-    enabled: Boolean(selectedConversationId),
-  });
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
   useEffect(() => {
-    if (!selectedConversationId && conversations.length > 0) {
-      setSelectedConversationId(conversations[0].id);
-      return;
-    }
+    dispatch(fetchOmniConversations());
+    dispatch(fetchMemberships());
+  }, [dispatch]);
 
-    if (
-      selectedConversationId &&
-      !conversations.some((conversation: any) => conversation.id === selectedConversationId)
-    ) {
-      setSelectedConversationId(conversations[0]?.id || null);
+  const selectedConversation = currentConversation.data;
+  const messages = currentConversation.messages;
+  const conversationsData = conversations.data;
+  const membershipsData = memberships.data;
+
+  useEffect(() => {
+    if (!selectedConversation && conversationsData.length > 0) {
+      dispatch(setCurrentConversation(conversationsData[0]));
     }
-  }, [conversations, selectedConversationId]);
+  }, [conversationsData, selectedConversation, dispatch]);
+
+  useEffect(() => {
+    if (selectedConversation?.id) {
+      dispatch(fetchOmniMessages(selectedConversation.id));
+    }
+  }, [selectedConversation?.id, dispatch]);
 
   useSocket(user?.orgId, (event, data) => {
     if (event === 'omni:message') {
-      queryClient.invalidateQueries({ queryKey: ['omni-conversations'] });
-
-      if (data?.conversationId) {
-        queryClient.invalidateQueries({ queryKey: ['omni-messages', data.conversationId] });
+      dispatch(fetchOmniConversations());
+      if (data?.conversationId === selectedConversation?.id) {
+        dispatch(fetchOmniMessages(data.conversationId));
       }
     }
   });
 
-  const sendMutation = useMutation({
-    mutationFn: (text: string) =>
-      omniChatService.sendMessage({
-        conversationId: selectedConversationId!,
-        content: text,
+  const handleSend = async () => {
+    if (!messageText.trim() || !selectedConversation?.id) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(sendOmniMessageThunk({
+        conversationId: selectedConversation.id,
+        content: messageText.trim(),
         type: 'text',
-      }),
-    onSuccess: () => {
+      })).unwrap();
       setMessageText('');
       setError(null);
-      queryClient.invalidateQueries({ queryKey: ['omni-messages', selectedConversationId] });
-      queryClient.invalidateQueries({ queryKey: ['omni-conversations'] });
-    },
-    onError: (mutationError: any) => {
-      setError(mutationError?.response?.data?.message || mutationError?.message || 'Unable to send message.');
-    },
-  });
+      dispatch(fetchOmniMessages(selectedConversation.id));
+      dispatch(fetchOmniConversations());
+    } catch (err: any) {
+      setError(err || 'Unable to send message.');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const assignMutation = useMutation({
-    mutationFn: (agentId: string) => omniChatService.assignAgent(selectedConversationId!, agentId),
-    onSuccess: () => {
-      setError(null);
-      queryClient.invalidateQueries({ queryKey: ['omni-conversations'] });
-    },
-    onError: (mutationError: any) => {
-      setError(
-        mutationError?.response?.data?.message || mutationError?.message || 'Unable to assign conversation.'
-      );
-    },
-  });
+  const handleAssign = async (agentId: string) => {
+    if (!selectedConversation?.id) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(assignOmniAgentThunk({ conversationId: selectedConversation.id, agentId })).unwrap();
+      dispatch(fetchOmniConversations());
+    } catch (err: any) {
+      setError(err || 'Unable to assign agent.');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const statusMutation = useMutation({
-    mutationFn: (status: string) =>
-      omniChatService.updateConversation(selectedConversationId!, {
-        status,
-      }),
-    onSuccess: () => {
-      setError(null);
-      queryClient.invalidateQueries({ queryKey: ['omni-conversations'] });
-    },
-    onError: (mutationError: any) => {
-      setError(
-        mutationError?.response?.data?.message || mutationError?.message || 'Unable to update conversation.'
-      );
-    },
-  });
+  const handleStatusUpdate = async (status: string) => {
+    if (!selectedConversation?.id) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(updateOmniConversationThunk({ id: selectedConversation.id, data: { status } })).unwrap();
+      dispatch(fetchOmniConversations());
+    } catch (err: any) {
+      setError(err || 'Unable to update status.');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const suggestionMutation = useMutation({
-    mutationFn: () => omniChatService.suggestReply(selectedConversationId!),
-    onSuccess: (result) => {
-      if (result?.suggestion) {
-        setMessageText(result.suggestion);
-      }
-      setError(null);
-    },
-    onError: (mutationError: any) => {
-      setError(
-        mutationError?.response?.data?.message || mutationError?.message || 'Unable to generate suggestion.'
-      );
-    },
-  });
+  const handleSuggest = async () => {
+    if (!selectedConversation?.id) return;
+    try {
+      setIsMutationPending(true);
+      const result = await dispatch(suggestOmniReplyThunk(selectedConversation.id)).unwrap();
+      if (result?.suggestion) setMessageText(result.suggestion);
+    } catch (err: any) {
+      setError(err || 'Unable to generate suggestion.');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const filteredConversations = conversations.filter((conversation: any) => {
+  const filteredConversations = conversationsData.filter((conversation: any) => {
     const haystack = [
       conversation.contactName,
       conversation.contactId,
@@ -190,17 +185,9 @@ export function OmniChatView() {
   );
 
   const selectedMembership =
-    memberships.find((membership: any) => membership.userId === selectedConversation?.assignedAgentId) || null;
+    membershipsData.find((membership: any) => membership.userId === selectedConversation?.assignedAgentId) || null;
 
-  const handleSend = () => {
-    if (!messageText.trim() || !selectedConversationId) {
-      return;
-    }
-
-    sendMutation.mutate(messageText.trim());
-  };
-
-  if (conversationsLoading) {
+  if (conversations.loading && !conversationsData.length) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <CircularProgress />
@@ -253,7 +240,7 @@ export function OmniChatView() {
               {filteredConversations.map((conversation: any) => (
                 <Box
                   key={conversation.id}
-                  onClick={() => setSelectedConversationId(conversation.id)}
+                  onClick={() => dispatch(setCurrentConversation(conversation))}
                   sx={{
                     p: 1.5,
                     borderRadius: 1,
@@ -262,7 +249,7 @@ export function OmniChatView() {
                     alignItems: 'center',
                     gap: 2,
                     bgcolor:
-                      selectedConversationId === conversation.id ? 'action.selected' : 'transparent',
+                      selectedConversation?.id === conversation.id ? 'action.selected' : 'transparent',
                     '&:hover': { bgcolor: 'action.hover' },
                   }}
                 >
@@ -324,7 +311,7 @@ export function OmniChatView() {
                 </Box>
               ))}
 
-              {filteredConversations.length === 0 ? (
+              {filteredConversations.length === 0 && !conversations.loading && (
                 <Box sx={{ px: 2, py: 6, textAlign: 'center' }}>
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>
                     No conversations found
@@ -333,7 +320,7 @@ export function OmniChatView() {
                     Try a different search term or wait for inbound messages to arrive.
                   </Typography>
                 </Box>
-              ) : null}
+              )}
             </Stack>
           </Scrollbar>
         </Box>
@@ -404,8 +391,8 @@ export function OmniChatView() {
                   <Select
                     size="small"
                     value={selectedConversation.status || 'open'}
-                    onChange={(event) => statusMutation.mutate(String(event.target.value))}
-                    disabled={statusMutation.isPending}
+                    onChange={(event) => handleStatusUpdate(String(event.target.value))}
+                    disabled={isMutationPending}
                     sx={{ minWidth: 120 }}
                   >
                     {STATUS_OPTIONS.map((option) => (
@@ -419,19 +406,19 @@ export function OmniChatView() {
                     size="small"
                     displayEmpty
                     value={selectedConversation.assignedAgentId || ''}
-                    onChange={(event) => assignMutation.mutate(String(event.target.value))}
-                    disabled={assignMutation.isPending || memberships.length === 0}
+                    onChange={(event) => handleAssign(String(event.target.value))}
+                    disabled={isMutationPending || membershipsData.length === 0}
                     sx={{ minWidth: 220 }}
                     renderValue={(value) => {
                       if (!value) {
                         return 'Assign agent';
                       }
 
-                      const membership = memberships.find((item: any) => item.userId === value);
+                      const membership = membershipsData.find((item: any) => item.userId === value);
                       return formatParticipantLabel(membership?.userId, membership?.role);
                     }}
                   >
-                    {memberships.map((membership: any) => (
+                    {membershipsData.map((membership: any) => (
                       <MenuItem key={membership.id || membership.userId} value={membership.userId}>
                         {formatParticipantLabel(membership.userId, membership.role)}
                       </MenuItem>
@@ -439,9 +426,9 @@ export function OmniChatView() {
                   </Select>
 
                   <IconButton
-                    onClick={() => suggestionMutation.mutate()}
+                    onClick={handleSuggest}
                     color="primary"
-                    disabled={suggestionMutation.isPending}
+                    disabled={isMutationPending}
                   >
                     <Iconify icon="solar:magic-stick-3-bold" />
                   </IconButton>
@@ -457,13 +444,13 @@ export function OmniChatView() {
               <Box sx={{ flexGrow: 1, p: 2, overflowY: 'hidden' }}>
                 <Scrollbar sx={{ height: '100%' }}>
                   <Stack spacing={2.5}>
-                    {messagesLoading ? (
+                    {currentConversation.loading && !messages.length && (
                       <Box sx={{ textAlign: 'center', py: 4 }}>
                         <CircularProgress size={24} />
                       </Box>
-                    ) : null}
+                    )}
 
-                    {!messagesLoading && orderedMessages.length === 0 ? (
+                    {!currentConversation.loading && orderedMessages.length === 0 ? (
                       <Box sx={{ textAlign: 'center', py: 8 }}>
                         <Typography variant="subtitle2" sx={{ mb: 1 }}>
                           No message history yet
@@ -543,9 +530,9 @@ export function OmniChatView() {
                   <IconButton
                     color="primary"
                     onClick={handleSend}
-                    disabled={!messageText.trim() || sendMutation.isPending}
+                    disabled={!messageText.trim() || isMutationPending}
                   >
-                    {sendMutation.isPending ? (
+                    {isMutationPending ? (
                       <CircularProgress size={22} />
                     ) : (
                       <Iconify icon="solar:send-bold" width={28} />

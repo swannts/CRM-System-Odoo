@@ -1,6 +1,6 @@
 import { z as zod } from 'zod';
 import { useForm } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
+import { useSelector } from 'react-redux';
 import { useMemo, useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -21,6 +21,13 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 
+import { RootState, useAppDispatch } from 'src/store/hooks';
+import { 
+  createLocalCampaign, 
+  fetchCampaignCompliance, 
+  fetchSenderStatus 
+} from 'src/store/slices/marketing-slice';
+
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
@@ -28,7 +35,6 @@ import { Iconify } from 'src/components/iconify';
 import { showToast } from 'src/components/toast';
 import { Form, RHFTextField } from 'src/components/hook-form';
 
-import { useCreateCampaign } from '../hooks/use-marketing';
 import { marketingService } from '../services/marketing-service';
 import { MarketingTemplatePicker } from './marketing-template-picker';
 import { MarketingCampaignPreview } from './marketing-campaign-preview';
@@ -69,7 +75,11 @@ export const CampaignSchema = zod.object({
 
 export function MarketingCampaignForm({ campaign, segments }: Props) {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const isEdit = !!campaign;
+
+  const { data: complianceData } = useSelector((state: RootState) => state.marketing.compliance);
+  const { data: senderStatusData } = useSelector((state: RootState) => state.marketing.senderStatus);
 
   const [tab, setTab] = useState('edit');
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
@@ -79,17 +89,12 @@ export function MarketingCampaignForm({ campaign, segments }: Props) {
   const [scheduleTime, setScheduleTime] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-  const createCampaign = useCreateCampaign();
-  const complianceQuery = useQuery({
-    queryKey: ['marketing-campaign-compliance', campaign?.id],
-    enabled: Boolean(campaign?.id),
-    queryFn: () => marketingService.getCampaignComplianceStatus(String(campaign?.id)),
-  });
-  const senderStatusQuery = useQuery({
-    queryKey: ['marketing-sender-status'],
-    enabled: Boolean(campaign?.id),
-    queryFn: () => marketingService.getSenderStatus(),
-  });
+  useEffect(() => {
+    if (campaign?.id) {
+      dispatch(fetchCampaignCompliance(campaign.id));
+      dispatch(fetchSenderStatus());
+    }
+  }, [campaign?.id, dispatch]);
 
   const defaultValues = useMemo(
     () => ({
@@ -132,7 +137,7 @@ export function MarketingCampaignForm({ campaign, segments }: Props) {
       if (isEdit && campaign?.id) {
         await marketingService.updateCampaignContent(campaign.id, data);
       } else {
-        const created = await createCampaign.mutateAsync(data as any);
+        const created = await dispatch(createLocalCampaign(data as any)).unwrap();
         const createdId =
           typeof created === 'number'
             ? String(created)
@@ -168,11 +173,11 @@ export function MarketingCampaignForm({ campaign, segments }: Props) {
 
   const complianceReady =
     !isEdit ||
-    (complianceQuery.data &&
-      typeof complianceQuery.data?.compliantRecipients === 'number' &&
-      complianceQuery.data.compliantRecipients > 0);
+    (complianceData &&
+      typeof complianceData?.compliantRecipients === 'number' &&
+      complianceData.compliantRecipients > 0);
 
-  const senderReady = !isEdit || Boolean(senderStatusQuery.data?.configured);
+  const senderReady = !isEdit || Boolean(senderStatusData?.configured);
   const deliveryEnabled = canDeliver && complianceReady && senderReady;
 
   const handleSendTest = async () => {
@@ -372,11 +377,11 @@ export function MarketingCampaignForm({ campaign, segments }: Props) {
                   <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center' }}>
                     <Iconify icon="solar:info-circle-bold" width={16} sx={{ mr: 0.5 }} />
                     {isEdit
-                      ? senderStatusQuery.isError
+                      ? !senderStatusData?.configured
                         ? 'Sender configuration is required.'
-                        : complianceQuery.isError
-                        ? 'Compliance checks are not available yet.'
-                        : complianceQuery.data?.message || 'Compliance check pending.'
+                        : !complianceData
+                        ? 'Compliance check pending.'
+                        : complianceData.message || 'Compliance check successful.'
                       : 'Save draft to run compliance checks.'}
                   </Typography>
                 </Card>

@@ -15,16 +15,16 @@ const FORMAT_AUDIO = ['wav', 'aif', 'mp3', 'aac'];
 const FORMAT_IMG = ['jpg', 'jpeg', 'gif', 'bmp', 'png', 'svg', 'webp'];
 const FORMAT_VIDEO = ['m4v', 'avi', 'mpg', 'mp4', 'webm'];
 
-const iconUrl = (icon) => `${CONFIG.site.basePath}/assets/icons/files/${icon}.svg`;
+const iconUrl = (icon: string) => `${CONFIG.site.basePath}/assets/icons/files/${icon}.svg`;
 
 // ----------------------------------------------------------------------
 
-export function fileFormat(fileUrl) {
-  let format;
+export function fileFormat(fileUrl: string) {
+  let format: string;
 
   const fileByUrl = fileTypeByUrl(fileUrl);
 
-  switch (fileUrl.includes(fileByUrl)) {
+  switch (true) {
     case FORMAT_TEXT.includes(fileByUrl):
       format = 'txt';
       break;
@@ -67,8 +67,8 @@ export function fileFormat(fileUrl) {
 
 // ----------------------------------------------------------------------
 
-export function fileThumb(fileUrl) {
-  let thumb;
+export function fileThumb(fileUrl: string) {
+  let thumb: string;
 
   switch (fileFormat(fileUrl)) {
     case 'folder':
@@ -115,19 +115,19 @@ export function fileThumb(fileUrl) {
 
 // ----------------------------------------------------------------------
 
-export function fileTypeByUrl(fileUrl) {
+export function fileTypeByUrl(fileUrl: string) {
   return (fileUrl && fileUrl.split('.').pop()) || '';
 }
 
 // ----------------------------------------------------------------------
 
-export function fileNameByUrl(fileUrl) {
-  return fileUrl.split('/').pop();
+export function fileNameByUrl(fileUrl: string) {
+  return fileUrl.split('/').pop() || '';
 }
 
 // ----------------------------------------------------------------------
 
-export function fileData(file) {
+export function fileData(file: any) {
   // From url
   if (typeof file === 'string') {
     return {

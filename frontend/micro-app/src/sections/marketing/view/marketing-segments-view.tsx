@@ -1,6 +1,12 @@
-'use client';
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchSegments,
+  createSegment,
+  updateSegment,
+  deleteSegment,
+  selectMarketing,
+} from 'src/store/slices/marketing-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -28,22 +34,24 @@ import { showToast } from 'src/components/toast';
 import { MarketingSegment } from '../types';
 import { marketingService } from '../services/marketing-service';
 import { MarketingEmptyState } from '../components/marketing-state-blocks';
-import { MarketingSegmentForm } from '../components/marketing-segment-form';
-import { useCreateSegment, useDeleteSegment, useUpdateSegment, useMarketingSegments } from '../hooks/use-marketing';
+import { MarketingSegmentForm, SegmentData } from '../components/marketing-segment-form';
 
 // ----------------------------------------------------------------------
 
 export function MarketingSegmentsView() {
-  const { data, isLoading } = useMarketingSegments();
-  const createSegment = useCreateSegment();
-  const updateSegment = useUpdateSegment();
-  const deleteSegment = useDeleteSegment();
+  const dispatch = useAppDispatch();
+  const { segments: segmentsState } = useAppSelector(selectMarketing);
+
+  const segments = segmentsState.data;
+  const isLoading = segmentsState.loading;
   
   const [open, setOpen] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState<MarketingSegment | undefined>();
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
 
-  const segments = Array.isArray(data) ? data : [];
+  useEffect(() => {
+    dispatch(fetchSegments());
+  }, [dispatch]);
 
   const handleOpen = () => setOpen(true);
   const handleClose = () => {
@@ -51,13 +59,13 @@ export function MarketingSegmentsView() {
     setSelectedSegment(undefined);
   };
 
-  const onSubmit = async (formData: any) => {
+  const onSubmit = async (formData: SegmentData) => {
     try {
       if (selectedSegment) {
-        await (updateSegment as any).mutateAsync({ id: selectedSegment.id, data: formData });
+        await dispatch(updateSegment({ id: selectedSegment.id, data: formData })).unwrap();
         showToast({ severity: 'success', message: 'Segment updated successfully' });
       } else {
-        await createSegment.mutateAsync(formData);
+        await dispatch(createSegment(formData)).unwrap();
         showToast({ severity: 'success', message: 'Segment created successfully' });
       }
       handleClose();
@@ -69,7 +77,7 @@ export function MarketingSegmentsView() {
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this segment?')) return;
     try {
-      await deleteSegment.mutateAsync(id);
+      await dispatch(deleteSegment(id)).unwrap();
       showToast({ severity: 'success', message: 'Segment deleted successfully' });
     } catch {
       showToast({ severity: 'error', message: 'Failed to delete segment' });

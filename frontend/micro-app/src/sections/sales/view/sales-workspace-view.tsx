@@ -1,6 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchSalesSummary,
+  fetchSalesOrders,
+  fetchSalesLeads,
+  fetchSalesOpportunities,
+  fetchSalesActivities,
+  fetchSalesAnalytics,
+  fetchSalesStages,
+  createOpportunityThunk,
+  updateOpportunityThunk,
+  updateOpportunityStageThunk,
+  createSalesActivityThunk,
+  completeSalesActivityThunk,
+  deleteSalesActivityThunk,
+  deleteSalesOpportunityThunk,
+  linkOrderToOpportunityThunk,
+  previewSyncThunk,
+  runSyncThunk,
+  selectSales,
+  clearSyncResults,
+} from 'src/store/slices/sales-slice';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -12,26 +34,6 @@ import TextField from '@mui/material/TextField';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
-
-import {
-  useSalesLeads,
-  useSalesOrders,
-  useSalesSummary,
-  useSalesAnalytics,
-  useSalesActivities,
-  useSalesOpportunities,
-  useCreateSalesActivity,
-  useRunMagentoToOdooSync,
-  useCompleteSalesActivity,
-  useLinkOrderToOpportunity,
-  useUpdateSalesOpportunity,
-  useCreateSalesOpportunity,
-  useUpdateOpportunityStage,
-  useDeleteSalesActivity,
-  useDeleteSalesOpportunity,
-  usePreviewMagentoToOdooSync,
-  useSalesStages,
-} from 'src/hooks/use-sales-dashboard';
 
 import { toast } from 'src/components/snackbar';
 
@@ -54,6 +56,9 @@ import { SalesDashboardPanel } from '../components/sales-dashboard-panel';
 import type { SalesFilters, SalesActivity, SalesOpportunity } from '../types';
 
 export function SalesWorkspaceView() {
+  const dispatch = useAppDispatch();
+  const salesState = useAppSelector(selectSales);
+
   const [tab, setTab] = useState<SalesTab>('dashboard');
   const [search, setSearch] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
@@ -64,65 +69,69 @@ export function SalesWorkspaceView() {
   const [activityType, setActivityType] = useState<SalesActivity['type']>('todo');
   const [activityDueDate, setActivityDueDate] = useState('');
 
-  const filters: SalesFilters = { search: search || undefined };
+  const filters: SalesFilters = useMemo(() => ({ search: search || undefined }), [search]);
 
-  const summaryQuery = useSalesSummary(filters);
-  const opportunitiesQuery = useSalesOpportunities(filters);
-  const leadsQuery = useSalesLeads(filters);
-  const ordersQuery = useSalesOrders(filters);
-  const activitiesQuery = useSalesActivities(filters);
-  const analyticsQuery = useSalesAnalytics(filters);
-  const stagesQuery = useSalesStages();
+  const summary = salesState.summary;
+  const opportunities = salesState.opportunities;
+  const leads = salesState.leads;
+  const orders = salesState.orders;
+  const activities = salesState.activities;
+  const analytics = salesState.analytics;
+  const stages = salesState.stages;
+  const sync = salesState.sync;
 
-  const createOpportunityMutation = useCreateSalesOpportunity();
-  const updateOpportunityMutation = useUpdateSalesOpportunity();
-  const stageMutation = useUpdateOpportunityStage();
-  const createActivityMutation = useCreateSalesActivity();
-  const completeActivityMutation = useCompleteSalesActivity();
-  const deleteActivityMutation = useDeleteSalesActivity();
-  const deleteOpportunityMutation = useDeleteSalesOpportunity();
-  const linkOrderMutation = useLinkOrderToOpportunity();
-  const previewSyncMutation = usePreviewMagentoToOdooSync();
-  const runSyncMutation = useRunMagentoToOdooSync();
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
-  const failedSections = [summaryQuery, opportunitiesQuery, leadsQuery, ordersQuery, activitiesQuery, analyticsQuery].filter((query) => query.isError).length;
+  const refreshAll = useCallback(() => {
+    dispatch(fetchSalesSummary(filters));
+    dispatch(fetchSalesOpportunities(filters));
+    dispatch(fetchSalesLeads(filters));
+    dispatch(fetchSalesOrders(filters));
+    dispatch(fetchSalesActivities(filters));
+    dispatch(fetchSalesAnalytics(filters));
+    dispatch(fetchSalesStages());
+  }, [dispatch, filters]);
 
-  const refreshAll = () => {
-    summaryQuery.refetch();
-    opportunitiesQuery.refetch();
-    leadsQuery.refetch();
-    ordersQuery.refetch();
-    activitiesQuery.refetch();
-    analyticsQuery.refetch();
-    stagesQuery.refetch();
-  };
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
 
   const handleOpportunitySubmit = async (values: OpportunityFormValues) => {
     try {
+      setIsMutationPending(true);
       if (selectedOpportunity?.id) {
-        await updateOpportunityMutation.mutateAsync({ id: selectedOpportunity.id, payload: values });
+        await dispatch(updateOpportunityThunk({ id: selectedOpportunity.id, payload: values })).unwrap();
         toast.success('Opportunity updated');
       } else {
-        await createOpportunityMutation.mutateAsync(values);
+        await dispatch(createOpportunityThunk(values)).unwrap();
         toast.success('Opportunity created');
       }
       setOpportunityOpen(false);
+      refreshAll();
     } catch (error: any) {
-      toast.error(error?.message || 'Unable to save opportunity');
+      toast.error(error || 'Unable to save opportunity');
+    } finally {
+      setIsMutationPending(false);
     }
   };
 
   const handleMoveStage = async (id: string, stage: SalesOpportunity['stage'], stageId?: number) => {
     try {
-      await stageMutation.mutateAsync({ id, stage, stageId });
+      setIsMutationPending(true);
+      await dispatch(updateOpportunityStageThunk({ id, stage, stageId })).unwrap();
       toast.success('Stage updated');
       if (selectedOpportunity?.id === id) {
         setSelectedOpportunity({ ...selectedOpportunity, stage, stageId });
       }
+      refreshAll();
     } catch (error: any) {
-      toast.error(error?.message || 'Stage update unavailable');
+      toast.error(error || 'Stage update unavailable');
+    } finally {
+      setIsMutationPending(false);
     }
   };
+
+  const failedSections = [summary, opportunities, leads, orders, activities, analytics].filter((s) => !!s.error).length;
 
   return (
     <FeatureRouteShell title="Sales" description="Track pipeline, leads, orders, and revenue in one place.">
@@ -140,14 +149,14 @@ export function SalesWorkspaceView() {
 
         {failedSections >= 2 ? <Alert severity="warning">Some sales sections are temporarily unavailable. Available sections still work.</Alert> : null}
 
-        {summaryQuery.isError ? (
+        {summary.error ? (
           <SalesErrorState
             title="Summary unavailable"
-            message={(summaryQuery.error as Error)?.message}
-            onRetry={() => summaryQuery.refetch()}
+            message={summary.error}
+            onRetry={() => dispatch(fetchSalesSummary(filters))}
           />
         ) : (
-          <SalesKpiRow summary={summaryQuery.data} loading={summaryQuery.isLoading} />
+          <SalesKpiRow summary={summary.data} loading={summary.loading} />
         )}
 
         <SalesTabs value={tab} onChange={setTab} />
@@ -155,24 +164,24 @@ export function SalesWorkspaceView() {
         <Box>
           {tab === 'dashboard' && (
             <SalesDashboardPanel
-              summary={summaryQuery.data}
-              pipelineByStage={analyticsQuery.data?.pipelineByStage}
-              recentActivities={activitiesQuery.data}
+              summary={summary.data}
+              pipelineByStage={analytics.data?.pipelineByStage}
+              recentActivities={activities.data}
             />
           )}
 
           {tab === 'pipeline' ? (
-            opportunitiesQuery.isError ? (
+            opportunities.error ? (
               <SalesErrorState
                 title="Pipeline unavailable"
-                message={(opportunitiesQuery.error as Error)?.message}
-                onRetry={() => opportunitiesQuery.refetch()}
+                message={opportunities.error}
+                onRetry={() => dispatch(fetchSalesOpportunities(filters))}
               />
             ) : (
               <SalesPipelineKanban
-                opportunities={opportunitiesQuery.data ?? []}
-                stages={stagesQuery.data}
-                moving={stageMutation.isPending}
+                opportunities={opportunities.data ?? []}
+                stages={stages.data}
+                moving={isMutationPending}
                 onOpen={(item) => setSelectedOpportunity(item)}
                 onMove={handleMoveStage}
               />
@@ -180,78 +189,90 @@ export function SalesWorkspaceView() {
           ) : null}
 
           {tab === 'leads' ? (
-            leadsQuery.isError ? (
+            leads.error ? (
               <SalesErrorState
                 title="Leads unavailable"
-                message={(leadsQuery.error as Error)?.message}
-                onRetry={() => leadsQuery.refetch()}
+                message={leads.error}
+                onRetry={() => dispatch(fetchSalesLeads(filters))}
               />
             ) : (
-              <SalesLeadsPanel leads={leadsQuery.data ?? []} search={search} />
+              <SalesLeadsPanel leads={leads.data ?? []} search={search} />
             )
           ) : null}
 
           {tab === 'orders' ? (
-            ordersQuery.isError ? (
+            orders.error ? (
               <SalesErrorState
                 title="Orders unavailable"
-                message={(ordersQuery.error as Error)?.message}
-                onRetry={() => ordersQuery.refetch()}
+                message={orders.error}
+                onRetry={() => dispatch(fetchSalesOrders(filters))}
               />
             ) : (
               <SalesOrdersTable
-                rows={ordersQuery.data ?? []}
-                opportunities={opportunitiesQuery.data ?? []}
+                rows={orders.data ?? []}
+                opportunities={opportunities.data ?? []}
                 onLink={async (orderId, opportunityId) => {
                   try {
-                    await linkOrderMutation.mutateAsync({ orderId, opportunityId });
+                    setIsMutationPending(true);
+                    await dispatch(linkOrderToOpportunityThunk({ orderId, opportunityId })).unwrap();
                     toast.success('Order linked');
+                    refreshAll();
                   } catch (error: any) {
-                    toast.error(error?.message || 'Link unavailable');
+                    toast.error(error || 'Link unavailable');
+                  } finally {
+                    setIsMutationPending(false);
                   }
                 }}
-                linking={linkOrderMutation.isPending}
+                linking={isMutationPending}
               />
             )
           ) : null}
 
           {tab === 'activities' ? (
-            activitiesQuery.isError ? (
+            activities.error ? (
               <SalesErrorState
                 title="Activities unavailable"
-                message={(activitiesQuery.error as Error)?.message}
-                onRetry={() => activitiesQuery.refetch()}
+                message={activities.error}
+                onRetry={() => dispatch(fetchSalesActivities(filters))}
               />
             ) : (
               <SalesActivitiesPanel
-                rows={activitiesQuery.data ?? []}
+                rows={activities.data ?? []}
                 onComplete={async (id) => {
                   try {
-                    await completeActivityMutation.mutateAsync(id);
+                    setIsMutationPending(true);
+                    await dispatch(completeSalesActivityThunk(id)).unwrap();
                     toast.success('Activity completed');
+                    refreshAll();
                   } catch (error: any) {
-                    toast.error(error?.message || 'Complete unavailable');
+                    toast.error(error || 'Complete unavailable');
+                  } finally {
+                    setIsMutationPending(false);
                   }
                 }}
                 onDelete={async (id) => {
                   try {
-                    await deleteActivityMutation.mutateAsync(id);
+                    setIsMutationPending(true);
+                    await dispatch(deleteSalesActivityThunk(id)).unwrap();
                     toast.success('Activity deleted');
+                    refreshAll();
                   } catch (error: any) {
-                    toast.error(error?.message || 'Delete unavailable');
+                    toast.error(error || 'Delete unavailable');
+                  } finally {
+                    setIsMutationPending(false);
                   }
                 }}
-                completing={completeActivityMutation.isPending}
-                deleting={deleteActivityMutation.isPending}
+                completing={isMutationPending}
+                deleting={isMutationPending}
               />
             )
           ) : null}
 
           {tab === 'analytics' ? (
-            analyticsQuery.isError && summaryQuery.isError && leadsQuery.isError && ordersQuery.isError ? (
+            analytics.error && summary.error && leads.error && orders.error ? (
               <SalesErrorState title="Analytics unavailable" description="Analytics data is currently unavailable." />
             ) : (
-              <SalesAnalyticsPanel summary={summaryQuery.data} leads={leadsQuery.data ?? []} orders={ordersQuery.data ?? []} />
+              <SalesAnalyticsPanel summary={summary.data} leads={leads.data ?? []} orders={orders.data ?? []} />
             )
           ) : null}
         </Box>
@@ -260,36 +281,44 @@ export function SalesWorkspaceView() {
       <SalesOpportunityDrawer
         open={Boolean(selectedOpportunity)}
         item={selectedOpportunity}
-        orders={ordersQuery.data ?? []}
-        stageLoading={stageMutation.isPending}
+        orders={orders.data ?? []}
+        stageLoading={isMutationPending}
         onClose={() => setSelectedOpportunity(null)}
         onEdit={() => setOpportunityOpen(true)}
         onAddActivity={() => setActivityOpen(true)}
         onLinkOrder={async (orderId, opportunityId) => {
           try {
-            await linkOrderMutation.mutateAsync({ orderId, opportunityId });
+            setIsMutationPending(true);
+            await dispatch(linkOrderToOpportunityThunk({ orderId, opportunityId })).unwrap();
             toast.success('Order linked');
+            refreshAll();
           } catch (error: any) {
-            toast.error(error?.message || 'Link unavailable');
+            toast.error(error || 'Link unavailable');
+          } finally {
+            setIsMutationPending(false);
           }
         }}
         onMoveStage={handleMoveStage}
         onDelete={async (id) => {
           try {
-            await deleteOpportunityMutation.mutateAsync(id);
+            setIsMutationPending(true);
+            await dispatch(deleteSalesOpportunityThunk(id)).unwrap();
             toast.success('Opportunity archived');
             setSelectedOpportunity(null);
+            refreshAll();
           } catch (error: any) {
-            toast.error(error?.message || 'Delete unavailable');
+            toast.error(error || 'Delete unavailable');
+          } finally {
+            setIsMutationPending(false);
           }
         }}
-        stages={stagesQuery.data}
+        stages={stages.data}
       />
 
       <SalesOpportunityDialog
         open={opportunityOpen}
         initial={selectedOpportunity}
-        loading={createOpportunityMutation.isPending || updateOpportunityMutation.isPending}
+        loading={isMutationPending}
         onClose={() => setOpportunityOpen(false)}
         onSubmit={handleOpportunitySubmit}
       />
@@ -313,24 +342,28 @@ export function SalesWorkspaceView() {
           <Button onClick={() => setActivityOpen(false)}>Cancel</Button>
           <Button
             variant="contained"
-            disabled={!selectedOpportunity?.id || !activityTitle || createActivityMutation.isPending}
+            disabled={!selectedOpportunity?.id || !activityTitle || isMutationPending}
             onClick={async () => {
               if (!selectedOpportunity?.id) return;
               try {
-                await createActivityMutation.mutateAsync({
+                setIsMutationPending(true);
+                await dispatch(createSalesActivityThunk({
                   opportunityId: selectedOpportunity.id,
                   payload: {
                     type: activityType,
                     title: activityTitle,
                     dueDate: activityDueDate || undefined,
                   },
-                });
+                })).unwrap();
                 toast.success('Activity created');
                 setActivityOpen(false);
                 setActivityTitle('');
                 setActivityDueDate('');
+                refreshAll();
               } catch (error: any) {
-                toast.error(error?.message || 'Create activity unavailable');
+                toast.error(error || 'Create activity unavailable');
+              } finally {
+                setIsMutationPending(false);
               }
             }}
           >
@@ -341,19 +374,22 @@ export function SalesWorkspaceView() {
 
       <SalesSyncDialog
         open={syncOpen}
-        preview={previewSyncMutation.data ?? null}
-        result={runSyncMutation.data ?? null}
-        previewLoading={previewSyncMutation.isPending}
-        runLoading={runSyncMutation.isPending}
-        onClose={() => setSyncOpen(false)}
-        onPreview={() => previewSyncMutation.mutate()}
+        preview={sync.preview}
+        result={sync.result}
+        previewLoading={sync.previewLoading}
+        runLoading={sync.runLoading}
+        onClose={() => {
+          setSyncOpen(false);
+          dispatch(clearSyncResults());
+        }}
+        onPreview={() => dispatch(previewSyncThunk())}
         onRun={async () => {
           try {
-            await runSyncMutation.mutateAsync();
+            await dispatch(runSyncThunk()).unwrap();
             toast.success('Sync completed');
             refreshAll();
           } catch (error: any) {
-            toast.error(error?.message || 'Sync unavailable');
+            toast.error(error || 'Sync unavailable');
           }
         }}
       />

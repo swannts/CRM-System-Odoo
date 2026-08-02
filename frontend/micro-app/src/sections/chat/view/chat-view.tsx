@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchChatContacts, fetchChatMessages, selectChat } from 'src/store/slices/chat-slice';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -11,7 +12,6 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
 
-import { chatService } from 'src/services/chat-service';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Iconify } from 'src/components/iconify';
@@ -20,21 +20,28 @@ import { Scrollbar } from 'src/components/scrollbar';
 // ----------------------------------------------------------------------
 
 export function ChatView() {
+  const dispatch = useAppDispatch();
+  const chatState = useAppSelector(selectChat);
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [message, setMessage] = useState('');
 
-  const { data: contacts, isLoading: contactsLoading } = useQuery({
-    queryKey: ['chat-contacts'],
-    queryFn: () => chatService.getContacts(),
-  });
+  useEffect(() => {
+    dispatch(fetchChatContacts());
+  }, [dispatch]);
 
-  const { data: messages, isLoading: messagesLoading } = useQuery({
-    queryKey: ['chat-messages', selectedContact?.channelId],
-    queryFn: () => chatService.getMessages(selectedContact.channelId),
-    enabled: !!selectedContact?.channelId,
-  });
+  useEffect(() => {
+    if (selectedContact?.channelId) {
+      dispatch(fetchChatMessages(selectedContact.channelId));
+    }
+  }, [dispatch, selectedContact]);
 
-  if (contactsLoading) {
+  const contacts = chatState.contacts.data;
+  const contactsLoading = chatState.contacts.loading;
+  
+  const messages = selectedContact?.channelId ? chatState.messages[selectedContact.channelId]?.data || [] : [];
+  const messagesLoading = selectedContact?.channelId ? chatState.messages[selectedContact.channelId]?.loading : false;
+
+  if (contactsLoading && contacts.length === 0) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <LinearProgress />
@@ -96,7 +103,7 @@ export function ChatView() {
               <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }}>
                  <Scrollbar>
                     <Stack spacing={2}>
-                      {messagesLoading && <LinearProgress size={24} />}
+                      {messagesLoading && <LinearProgress />}
                        {(messages || []).map((msg: any) => (
                          <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.senderType === 'user' ? 'flex-end' : 'flex-start' }}>
                             <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: msg.senderType === 'user' ? 'primary.main' : 'background.neutral', color: msg.senderType === 'user' ? 'primary.contrastText' : 'text.primary', maxWidth: '70%' }}>

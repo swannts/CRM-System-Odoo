@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchOmniWebhooks, selectOmni } from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -20,30 +22,32 @@ import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniAutomationService } from 'src/services/omni-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
-import { showToast } from 'src/components/toast';
+import { toast } from 'src/components/snackbar';
 import { Scrollbar } from 'src/components/scrollbar';
 
 // ----------------------------------------------------------------------
 
 export function WebhookListView() {
+  const dispatch = useAppDispatch();
   const router = useRouter();
+  const { webhooks } = useAppSelector(selectOmni);
 
-  const { data: webhooks, isLoading } = useQuery({
-    queryKey: ['omni-webhooks'],
-    queryFn: () => omniAutomationService.getWebhooks(),
-  });
+  useEffect(() => {
+    dispatch(fetchOmniWebhooks());
+  }, [dispatch]);
 
   const handleCopyUrl = (id: string) => {
     const url = `${window.location.origin}/api/automation/v1/public/webhook/receive/${id}`;
     navigator.clipboard.writeText(url);
-    showToast({ message: 'Webhook URL copied to clipboard!', severity: 'success' });
+    toast.success('Webhook URL copied to clipboard!');
   };
 
-  if (isLoading) {
+  const isLoading = webhooks.loading;
+  const webhooksData = webhooks.data;
+
+  if (isLoading && !webhooksData.length) {
     return <Box sx={{ p: 5, textAlign: 'center' }}><LinearProgress /></Box>;
   }
 
@@ -73,7 +77,7 @@ export function WebhookListView() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(webhooks || []).map((row: any) => (
+              {webhooksData.map((row: any) => (
                 <TableRow key={row.id}>
                   <TableCell>
                     <Typography variant="subtitle2" noWrap>{row.name}</Typography>
@@ -112,6 +116,13 @@ export function WebhookListView() {
                   </TableCell>
                 </TableRow>
               ))}
+              {webhooksData.length === 0 && !isLoading && (
+                 <TableRow>
+                   <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                     No webhooks found.
+                   </TableCell>
+                 </TableRow>
+              )}
             </TableBody>
           </Table>
         </Scrollbar>

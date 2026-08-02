@@ -1,6 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchOrgDetailsThunk,
+  fetchOrgLocationsThunk,
+  selectOrganization,
+} from 'src/store/slices/organization-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -11,8 +17,6 @@ import LinearProgress from '@mui/material/LinearProgress';
 
 import { paths } from 'src/routes/paths';
 
-import { organizationService } from 'src/services/organization-service';
-
 import { FeatureRouteShell } from 'src/sections/parity/feature-route-shell';
 
 // ----------------------------------------------------------------------
@@ -22,17 +26,15 @@ type Props = {
 };
 
 export function SettingsWorkspaceView({ tab = 'general' }: Props) {
-  const orgQuery = useQuery({
-    queryKey: ['settings-org'],
-    queryFn: () => organizationService.getOrganizationDetails(),
-  });
+  const dispatch = useAppDispatch();
+  const { orgDetails, locations } = useAppSelector(selectOrganization);
 
-  const locationsQuery = useQuery({
-    queryKey: ['settings-locations'],
-    queryFn: () => organizationService.getLocations(),
-  });
+  useEffect(() => {
+    dispatch(fetchOrgDetailsThunk());
+    dispatch(fetchOrgLocationsThunk());
+  }, [dispatch]);
 
-  if (orgQuery.isLoading || locationsQuery.isLoading) {
+  if (orgDetails.loading || locations.loading) {
     return (
       <Box sx={{ py: 8, textAlign: 'center' }}>
         <LinearProgress />
@@ -57,8 +59,10 @@ export function SettingsWorkspaceView({ tab = 'general' }: Props) {
           <Card sx={{ p: 3 }}>
             <Stack spacing={2}>
               <Typography variant="h6">Organization</Typography>
-              <Typography variant="body2">Name: {orgQuery.data?.name || orgQuery.data?.organizationName || 'Unknown'}</Typography>
-              <Typography variant="body2">Email: {orgQuery.data?.email || 'N/A'}</Typography>
+              <Typography variant="body2">
+                Name: {orgDetails.data?.name || orgDetails.data?.organizationName || 'Unknown'}
+              </Typography>
+              <Typography variant="body2">Email: {orgDetails.data?.email || 'N/A'}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 Active tab: {tab}
               </Typography>
@@ -67,8 +71,10 @@ export function SettingsWorkspaceView({ tab = 'general' }: Props) {
         </Grid>
         <Grid item xs={12} md={4}>
           <Card sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Locations</Typography>
-            <Typography variant="h3">{(locationsQuery.data || []).length}</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Locations
+            </Typography>
+            <Typography variant="h3">{(locations.data || []).length}</Typography>
           </Card>
         </Grid>
       </Grid>

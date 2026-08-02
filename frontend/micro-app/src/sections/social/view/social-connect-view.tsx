@@ -1,7 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchSocialAnalyticsThunk, 
+  selectSocial 
+} from 'src/store/slices/social-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -14,8 +18,6 @@ import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { socialService } from 'src/services/social-service';
-
 import { Iconify } from 'src/components/iconify';
 
 import { SocialPlanner } from '../social-planner';
@@ -25,14 +27,18 @@ import { SocialComposer } from '../social-composer';
 // ----------------------------------------------------------------------
 
 export function SocialConnectView() {
+  const dispatch = useAppDispatch();
+  const { analytics } = useAppSelector(selectSocial);
   const [currentTab, setCurrentTab] = useState('accounts');
 
-  const { data: analytics, isLoading } = useQuery({
-    queryKey: ['social-analytics'],
-    queryFn: () => socialService.getAnalytics(),
-  });
+  useEffect(() => {
+    dispatch(fetchSocialAnalyticsThunk());
+  }, [dispatch]);
 
-  if (isLoading) {
+  const analyticsData = analytics.data;
+  const isLoading = analytics.loading;
+
+  if (isLoading && !analyticsData) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <CircularProgress />
@@ -61,16 +67,16 @@ export function SocialConnectView() {
 
       <Grid container spacing={3} sx={{ mb: 5 }}>
         <Grid item xs={12} md={3}>
-           <AnalyticsCard title="Total Reach" value={analytics?.totalReach || 0} icon="solar:users-group-rounded-bold-duotone" color="primary" />
+           <AnalyticsCard title="Total Reach" value={analyticsData?.totalReach || 0} icon="solar:users-group-rounded-bold-duotone" color="primary" />
         </Grid>
         <Grid item xs={12} md={3}>
-           <AnalyticsCard title="Engagement" value={`${analytics?.engagementRate || 0}%`} icon="solar:heart-bold-duotone" color="error" />
+           <AnalyticsCard title="Engagement" value={`${analyticsData?.engagementRate || 0}%`} icon="solar:heart-bold-duotone" color="error" />
         </Grid>
         <Grid item xs={12} md={3}>
-           <AnalyticsCard title="Followers" value={analytics?.totalFollowers || 0} icon="solar:user-plus-bold-duotone" color="info" />
+           <AnalyticsCard title="Followers" value={analyticsData?.totalFollowers || 0} icon="solar:user-plus-bold-duotone" color="info" />
         </Grid>
         <Grid item xs={12} md={3}>
-           <AnalyticsCard title="Scheduled" value={analytics?.scheduledPosts || 0} icon="solar:calendar-bold-duotone" color="warning" />
+           <AnalyticsCard title="Scheduled" value={analyticsData?.scheduledPosts || 0} icon="solar:calendar-bold-duotone" color="warning" />
         </Grid>
       </Grid>
 

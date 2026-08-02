@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchReputationOverview, selectReputation } from 'src/store/slices/reputation-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -14,25 +15,27 @@ import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { reputationService } from 'src/services/reputation-service';
-
 import { Iconify } from 'src/components/iconify';
 
 import { ReputationReviews } from '../reputation-reviews';
 import { ReputationRequests } from '../reputation-requests';
-import { ReputationSettings } from '../reputation-settings';
+import { ReputationSettings } from '../reputation-requests'; // Unified with requests in previous check
 
 // ----------------------------------------------------------------------
 
 export function ReputationView() {
+  const dispatch = useAppDispatch();
+  const { overview } = useAppSelector(selectReputation);
   const [currentTab, setCurrentTab] = useState('overview');
 
-  const { data: overview, isLoading } = useQuery({
-    queryKey: ['reputation-overview'],
-    queryFn: () => reputationService.getOverview(),
-  });
+  useEffect(() => {
+    dispatch(fetchReputationOverview());
+  }, [dispatch]);
 
-  if (isLoading) {
+  const isLoading = overview.loading;
+  const overviewData = overview.data;
+
+  if (isLoading && !overviewData) {
     return (
       <DashboardContent maxWidth="xl">
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 5 }}>
@@ -73,13 +76,13 @@ export function ReputationView() {
 
       <Grid container spacing={3} sx={{ mb: 5 }}>
         <Grid item xs={12} md={4}>
-          <SummaryCard title="Average Rating" value={overview?.averageRating || 0} icon="solar:star-bold-duotone" color="warning" subText={`${overview?.totalReviews || 0} Total Reviews`} />
+          <SummaryCard title="Average Rating" value={overviewData?.averageRating || 0} icon="solar:star-bold-duotone" color="warning" subText={`${overviewData?.totalReviews || 0} Total Reviews`} />
         </Grid>
         <Grid item xs={12} md={4}>
-          <SummaryCard title="Positive Sentiment" value={`${overview?.sentiment || 0}%`} icon="solar:emoji-funny-circle-bold-duotone" color="success" subText="Based on recent reviews" />
+          <SummaryCard title="Positive Sentiment" value={`${overviewData?.sentiment || 0}%`} icon="solar:emoji-funny-circle-bold-duotone" color="success" subText="Based on recent reviews" />
         </Grid>
         <Grid item xs={12} md={4}>
-          <SummaryCard title="Response Rate" value={`${overview?.responseRate || 0}%`} icon="solar:chat-round-check-bold-duotone" color="info" subText="Replies to reviews" />
+          <SummaryCard title="Response Rate" value={`${overviewData?.responseRate || 0}%`} icon="solar:chat-round-check-bold-duotone" color="info" subText="Replies to reviews" />
         </Grid>
       </Grid>
 

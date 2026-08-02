@@ -22,18 +22,22 @@ type Props = {
   title: string;
   description: string;
   links?: RouteLink[];
+  action?: React.ReactNode;
   children?: React.ReactNode;
 };
 
-export function FeatureRouteShell({ title, description, links = [], children }: Props) {
+export function FeatureRouteShell({ title, description, links = [], action, children }: Props) {
   return (
     <DashboardContent maxWidth="xl">
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4">{title}</Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-          {description}
-        </Typography>
-      </Box>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 4 }}>
+        <Box>
+          <Typography variant="h4">{title}</Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
+            {description}
+          </Typography>
+        </Box>
+        {action}
+      </Stack>
 
       {links.length > 0 && (
         <Card sx={{ p: 3, mb: 3 }}>

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchDocuments, selectDocuments } from 'src/store/slices/document-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -13,8 +14,6 @@ import Typography from '@mui/material/Typography';
 import InputAdornment from '@mui/material/InputAdornment';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { documentService } from 'src/services/document-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 import { FileThumbnail } from 'src/components/file-thumbnail';
@@ -22,14 +21,16 @@ import { FileThumbnail } from 'src/components/file-thumbnail';
 // ----------------------------------------------------------------------
 
 export function DocumentListView() {
+  const dispatch = useAppDispatch();
+  const { list } = useAppSelector(selectDocuments);
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['documents', search],
-    queryFn: () => documentService.getDocuments(),
-  });
+  useEffect(() => {
+    dispatch(fetchDocuments({ search }));
+  }, [dispatch, search]);
 
-  const documents = data || [];
+  const isLoading = list.loading;
+  const documents = list.data;
 
   return (
     <DashboardContent maxWidth="xl">
@@ -59,7 +60,7 @@ export function DocumentListView() {
         />
       </Box>
 
-      {isLoading ? (
+      {isLoading && !documents.length ? (
         <Grid container spacing={3}>
           {[...Array(8)].map((_, i) => (
             <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
@@ -111,7 +112,7 @@ export function DocumentListView() {
               </Card>
             </Grid>
           ))}
-          {documents.length === 0 && (
+          {documents.length === 0 && !isLoading && (
             <Grid item xs={12}>
               <Typography variant="h6" align="center" sx={{ py: 10 }}>
                 No documents found.

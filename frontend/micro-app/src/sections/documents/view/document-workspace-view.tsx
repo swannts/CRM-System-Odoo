@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchSharedDocumentThunk, selectDocuments } from 'src/store/slices/document-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -9,11 +10,9 @@ import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
-
-import { documentService } from 'src/services/document-service';
-
 import { Iconify } from 'src/components/iconify';
 
 import { FeatureRouteShell } from 'src/sections/parity/feature-route-shell';
@@ -42,13 +41,15 @@ export function DocumentWorkspaceView({
   template,
   type,
 }: Props) {
+  const dispatch = useAppDispatch();
+  const { shared } = useAppSelector(selectDocuments);
   const [activeMode, setActiveMode] = useState(mode);
 
-  const sharedQuery = useQuery({
-    queryKey: ['document-share', hashcode],
-    queryFn: () => documentService.getSharedDocument(hashcode!),
-    enabled: Boolean(hashcode),
-  });
+  useEffect(() => {
+    if (hashcode) {
+      dispatch(fetchSharedDocumentThunk(hashcode));
+    }
+  }, [dispatch, hashcode]);
 
   const title = activeMode === 'create'
     ? 'Create New Document'
@@ -61,6 +62,8 @@ export function DocumentWorkspaceView({
           : activeMode === 'contracts'
             ? 'Contract Management'
             : 'Document Command Center';
+
+  const sharedData = shared.data;
 
   return (
     <FeatureRouteShell
@@ -116,8 +119,14 @@ export function DocumentWorkspaceView({
               <Box sx={{ p: 3, bgcolor: 'background.neutral', borderBottom: (theme) => `1px solid ${theme.palette.divider}` }}>
                  <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Box>
-                       <Typography variant="h6">{sharedQuery.data?.document?.name || 'Secure Legal Agreement'}</Typography>
-                       <Typography variant="caption" color="text.secondary">Protected by MyManager Advanced E-Signature</Typography>
+                       {shared.loading ? (
+                         <CircularProgress size={24} />
+                       ) : (
+                         <>
+                           <Typography variant="h6">{sharedData?.document?.name || 'Secure Legal Agreement'}</Typography>
+                           <Typography variant="caption" color="text.secondary">Protected by MyManager Advanced E-Signature</Typography>
+                         </>
+                       )}
                     </Box>
                     <Button variant="contained" color="success" startIcon={<Iconify icon="solar:pen-bold" />}>Sign Now</Button>
                  </Stack>

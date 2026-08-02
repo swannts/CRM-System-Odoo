@@ -202,8 +202,10 @@ export function DashboardEcommerceTab() {
 
 // --- Internal Components ---
 
-function AnalyticsWidgetSummary({ title, total, percent, chart }: any) {
+function AnalyticsWidgetSummary({ title, total, percent, chart }: { title: string; total: string; percent: string; chart: { series: number[] } }) {
   const theme = useTheme();
+
+  const isLoss = Number(percent) < 0;
 
   return (
     <Card sx={{ p: 3, display: 'flex', alignItems: 'center' }}>
@@ -213,12 +215,12 @@ function AnalyticsWidgetSummary({ title, total, percent, chart }: any) {
           <Typography variant="h3">{total}</Typography>
         </Stack>
         <Stack direction="row" alignItems="center" spacing={0.5}>
-          <Iconify 
-            icon={percent < 0 ? 'solar:double-alt-arrow-down-bold-duotone' : 'solar:double-alt-arrow-up-bold-duotone'} 
-            sx={{ color: percent < 0 ? 'error.main' : 'success.main' }}
+          <Iconify
+            icon={isLoss ? 'solar:double-alt-arrow-down-bold-duotone' : 'solar:double-alt-arrow-up-bold-duotone'}
+            sx={{ color: isLoss ? 'error.main' : 'success.main' }}
           />
-          <Typography variant="subtitle2" sx={{ color: percent < 0 ? 'error.main' : 'success.main' }}>
-            {percent > 0 && '+'}
+          <Typography variant="subtitle2" sx={{ color: isLoss ? 'error.main' : 'success.main' }}>
+            {!isLoss && '+'}
             {percent}%
           </Typography>
           <Typography variant="caption" color="text.secondary">than last month</Typography>
@@ -236,5 +238,40 @@ function AnalyticsWidgetSummary({ title, total, percent, chart }: any) {
         height={80}
       />
     </Card>
+  );
+}
+
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+
+type DashboardSettingsDialogProps = {
+  open: boolean;
+  onClose: () => void;
+};
+
+export function DashboardSettingsDialog({ open, onClose }: DashboardSettingsDialogProps) {
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Customize Dashboard</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
+          Configure which widgets are visible and their display order.
+        </Typography>
+        <Stack spacing={2}>
+          {['Revenue Widget', 'Goal Tracker', 'Alerts Feed', 'My Tasks'].map((widget) => (
+            <Card key={widget} sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle2">{widget}</Typography>
+              <Button size="small" variant="outlined">Enabled</Button>
+            </Card>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} variant="contained">Save Changes</Button>
+      </DialogActions>
+    </Dialog>
   );
 }

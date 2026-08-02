@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchReputationReviews, selectReputation } from 'src/store/slices/reputation-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -14,20 +16,22 @@ import Typography from '@mui/material/Typography';
 import { Grid, LinearProgress } from '@mui/material';
 
 import { fDate } from 'src/utils/format-time';
-
-import { reputationService } from 'src/services/reputation-service';
-
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function ReputationReviews() {
-  const { data: reviews, isLoading } = useQuery({
-    queryKey: ['reputation-reviews'],
-    queryFn: () => reputationService.getReviews(),
-  });
+  const dispatch = useAppDispatch();
+  const { reviews } = useAppSelector(selectReputation);
 
-  if (isLoading) {
+  useEffect(() => {
+    dispatch(fetchReputationReviews());
+  }, [dispatch]);
+
+  const isLoading = reviews.loading;
+  const reviewsData = reviews.data;
+
+  if (isLoading && !reviewsData.length) {
     return <LinearProgress />;
   }
 
@@ -37,10 +41,10 @@ export function ReputationReviews() {
         <Card sx={{ p: 3 }}>
           <Typography variant="h6" sx={{ mb: 3 }}>Recent Reviews</Typography>
           <Stack spacing={4} divider={<Divider sx={{ borderStyle: 'dashed' }} />}>
-            {(reviews || []).map((review: any) => (
+            {reviewsData.map((review: any) => (
               <ReviewItem key={review.id} review={review} />
             ))}
-            {(reviews || []).length === 0 && (
+            {reviewsData.length === 0 && !isLoading && (
               <Box sx={{ py: 10, textAlign: 'center' }}>
                 <Typography variant="subtitle2" color="text.secondary">No reviews found.</Typography>
               </Box>

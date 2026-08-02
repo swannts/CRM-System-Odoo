@@ -1,8 +1,16 @@
 'use client';
 
 import { m } from 'framer-motion';
-import { useMemo, useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchNotificationsThunk,
+  fetchNotificationTotalsThunk,
+  markNotificationsReadThunk,
+  archiveNotificationsThunk,
+  unarchiveNotificationsThunk,
+  selectNotifications,
+} from 'src/store/slices/notification-slice';
 
 import Tab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
@@ -18,8 +26,6 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { useBoolean } from 'src/hooks/use-boolean';
 
-import { notificationService } from 'src/services/notification-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 import { varHover } from 'src/components/animate';
@@ -30,62 +36,61 @@ import { NotificationItem } from './notification-item';
 
 // ----------------------------------------------------------------------
 
-// ----------------------------------------------------------------------
-
-export function NotificationsDrawer({ data = [], sx, ...other }) {
+export function NotificationsDrawer({ sx, ...other }: any) {
+  const dispatch = useAppDispatch();
   const drawer = useBoolean();
-  const queryClient = useQueryClient();
+  const { notifications: notificationsState, totals: totalsState } = useAppSelector(selectNotifications);
 
   const [currentTab, setCurrentTab] = useState('all');
 
-  const handleChangeTab = useCallback((event, newValue) => {
+  const handleChangeTab = useCallback((event: any, newValue: string) => {
     setCurrentTab(newValue);
   }, []);
 
-  const { data: totals } = useQuery({
-    queryKey: ['notification-totals'],
-    queryFn: notificationService.getNotificationTotals,
-    refetchInterval: 30000,
-  });
-
-  const {
-    data: notifications = [],
-    isLoading,
-  } = useQuery({
-    queryKey: ['notifications', currentTab],
-    queryFn: () =>
-      notificationService.getNotifications({
+  const loadData = useCallback(() => {
+    dispatch(fetchNotificationTotalsThunk());
+    if (drawer.value) {
+      dispatch(fetchNotificationsThunk({
         archived: currentTab === 'archived',
         unread: currentTab === 'unread',
-      }),
-    enabled: drawer.value,
-    initialData: [],
-    refetchInterval: drawer.value ? 30000 : false,
-  });
+      }));
+    }
+  }, [dispatch, drawer.value, currentTab]);
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 30000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  const notifications = notificationsState.data || [];
+  const totals = totalsState.data;
+  const isLoading = notificationsState.loading;
 
   const totalUnRead = totals?.unread ?? notifications.filter((item) => !item.isRead && !item.isArchived).length;
 
-  const invalidateNotifications = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['notifications'] }),
-      queryClient.invalidateQueries({ queryKey: ['notification-totals'] }),
-    ]);
-  }, [queryClient]);
+  const handleMarkAllAsRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.isRead).map((n) => n.id);
+    if (unreadIds.length > 0) {
+      await dispatch(markNotificationsReadThunk(unreadIds)).unwrap();
+      loadData();
+    }
+  };
 
-  const markReadMutation = useMutation({
-    mutationFn: (ids?: string[]) => notificationService.markNotificationsRead(ids),
-    onSuccess: invalidateNotifications,
-  });
+  const handleMarkRead = async (id: string) => {
+    await dispatch(markNotificationsReadThunk([id])).unwrap();
+    loadData();
+  };
 
-  const archiveMutation = useMutation({
-    mutationFn: (ids?: string[]) => notificationService.archiveNotifications(ids),
-    onSuccess: invalidateNotifications,
-  });
+  const handleArchive = async (id: string) => {
+    await dispatch(archiveNotificationsThunk([id])).unwrap();
+    loadData();
+  };
 
-  const unarchiveMutation = useMutation({
-    mutationFn: (ids?: string[]) => notificationService.unarchiveNotifications(ids),
-    onSuccess: invalidateNotifications,
-  });
+  const handleUnarchive = async (id: string) => {
+    await dispatch(unarchiveNotificationsThunk([id])).unwrap();
+    loadData();
+  };
 
   const tabs = useMemo(
     () => [
@@ -95,11 +100,6 @@ export function NotificationsDrawer({ data = [], sx, ...other }) {
     ],
     [totals]
   );
-
-  const handleMarkAllAsRead = () => {
-    const unreadIds = notifications.filter((notification) => !notification.isRead).map((notification) => notification.id);
-    markReadMutation.mutate(unreadIds);
-  };
 
   const renderHead = (
     <Stack direction="row" alignItems="center" sx={{ py: 2, pl: 2.5, pr: 1, minHeight: 68 }}>
@@ -153,7 +153,7 @@ export function NotificationsDrawer({ data = [], sx, ...other }) {
   const renderList = (
     <Scrollbar>
       <Box component="ul">
-        {isLoading ? (
+        {isLoading && !notifications.length ? (
           <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
             <CircularProgress size={28} />
           </Stack>
@@ -162,9 +162,9 @@ export function NotificationsDrawer({ data = [], sx, ...other }) {
             <Box component="li" key={notification.id} sx={{ display: 'flex' }}>
               <NotificationItem
                 notification={notification}
-                onMarkRead={(id) => markReadMutation.mutate([id])}
-                onArchive={(id) => archiveMutation.mutate([id])}
-                onUnarchive={(id) => unarchiveMutation.mutate([id])}
+                onMarkRead={() => handleMarkRead(notification.id)}
+                onArchive={() => handleArchive(notification.id)}
+                onUnarchive={() => handleUnarchive(notification.id)}
               />
             </Box>
           ))
@@ -193,7 +193,6 @@ export function NotificationsDrawer({ data = [], sx, ...other }) {
       >
         <Badge badgeContent={totalUnRead} color="error">
           <SvgIcon>
-            {/* https://icon-sets.iconify.design/solar/bell-bing-bold-duotone/ */}
             <path
               fill="currentColor"
               d="M18.75 9v.704c0 .845.24 1.671.692 2.374l1.108 1.723c1.011 1.574.239 3.713-1.52 4.21a25.794 25.794 0 0 1-14.06 0c-1.759-.497-2.531-2.636-1.52-4.21l1.108-1.723a4.393 4.393 0 0 0 .693-2.374V9c0-3.866 3.022-7 6.749-7s6.75 3.134 6.75 7"

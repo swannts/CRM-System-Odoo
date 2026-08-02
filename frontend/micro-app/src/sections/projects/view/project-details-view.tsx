@@ -1,7 +1,21 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchProjectById, 
+  fetchProjectBoards, 
+  fetchBoardColumns, 
+  fetchBoardCards,
+  createColumnThunk,
+  updateColumnThunk,
+  deleteColumnThunk,
+  reorderColumnsThunk,
+  createCardThunk,
+  updateCardThunk,
+  deleteCardThunk,
+  selectProjects 
+} from 'src/store/slices/project-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -23,14 +37,12 @@ import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-
 import { DashboardContent } from 'src/layouts/dashboard';
-import { projectService } from 'src/services/project-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
+import { toast } from 'src/components/snackbar';
 
 import { ProjectDashboardView } from './project-dashboard-view';
 import { TaskDetailDrawer } from '../components/task-detail-drawer';
@@ -42,7 +54,9 @@ interface Props {
 }
 
 export function ProjectDetailsView({ id }: Props) {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const { currentProject } = useAppSelector(selectProjects);
+  
   const columnDialog = useBoolean();
   const taskDrawer = useBoolean();
   const confirmDeleteColumn = useBoolean();
@@ -71,146 +85,80 @@ export function ProjectDetailsView({ id }: Props) {
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
   const handleChangeTab = useCallback((event: React.SyntheticEvent, newValue: string) => {
     setCurrentTab(newValue);
   }, []);
 
-  const { data: project, isLoading: projectLoading } = useQuery({
-    queryKey: ['project', id],
-    queryFn: () => projectService.getProject(id),
-  });
+  useEffect(() => {
+    if (id) {
+      dispatch(fetchProjectById(id));
+      dispatch(fetchProjectBoards(id));
+    }
+  }, [dispatch, id]);
 
-  const { data: boards, isLoading: boardsLoading } = useQuery({
-    queryKey: ['project-boards', id],
-    queryFn: () => projectService.getProjectBoards(id),
-  });
+  const activeBoard = currentProject.boards?.[0];
 
-  const activeBoard = boards?.[0]; // Default to first board for simplicity
+  useEffect(() => {
+    if (activeBoard?.id) {
+      dispatch(fetchBoardColumns(activeBoard.id));
+      dispatch(fetchBoardCards(activeBoard.id));
+    }
+  }, [dispatch, activeBoard?.id]);
 
-  const { data: columnsData, isLoading: columnsLoading } = useQuery({
-    queryKey: ['board-columns', activeBoard?.id],
-    queryFn: () => projectService.getColumns(activeBoard?.id),
-    enabled: !!activeBoard?.id,
-  });
-
-  const { data: cardsData, isLoading: cardsLoading } = useQuery({
-    queryKey: ['board-cards', activeBoard?.id],
-    queryFn: () => projectService.getCards(activeBoard?.id),
-    enabled: !!activeBoard?.id,
-  });
-
-  const addColumnMutation = useMutation({
-    mutationFn: (name: string) => projectService.createColumn(activeBoard?.id, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board-columns', activeBoard?.id] });
-      columnDialog.onFalse();
-      setColumnName('');
-      setSelectedColumn(null);
-    },
-  });
-
-  const updateColumnMutation = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => projectService.updateColumn(id, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board-columns', activeBoard?.id] });
-      columnDialog.onFalse();
-      setColumnName('');
-      setSelectedColumn(null);
-    },
-  });
-
-  const deleteColumnMutation = useMutation({
-    mutationFn: (id: string) => projectService.deleteColumn(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board-columns', activeBoard?.id] });
-      confirmDeleteColumn.onFalse();
-    },
-  });
-
-  const reorderColumnsMutation = useMutation({
-    mutationFn: (orderedColumnIds: Array<string | number>) =>
-      projectService.reorderColumns(activeBoard?.id, orderedColumnIds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board-columns', activeBoard?.id] });
-    },
-    onError: () => {
-      setReorderError('Failed to reorder columns. Please try again.');
-    },
-  });
-
-  const addCardMutation = useMutation({
-    mutationFn: ({ columnId, title, priority }: { columnId: string; title: string; priority?: string }) => 
-      projectService.createCard(activeBoard?.id, { columnId, title, priority }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board-cards', activeBoard?.id] });
-      taskDrawer.onFalse();
-      setTaskTitle('');
-      setTaskDescription('');
-      setSelectedCard(null);
-    },
-  });
-
-  const updateCardMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => projectService.updateCard(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board-cards', activeBoard?.id] });
-      taskDrawer.onFalse();
-      setTaskTitle('');
-      setTaskDescription('');
-      setSelectedCard(null);
-    },
-  });
-
-  const deleteCardMutation = useMutation({
-    mutationFn: (id: string) => projectService.deleteCard(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board-cards', activeBoard?.id] });
-      confirmDeleteCard.onFalse();
-    },
-  });
-
-  if (projectLoading || boardsLoading || columnsLoading) {
-    return <ProjectSkeleton />;
-  }
-
-  const columns = columnsData || [];
-  const cards = cardsData || [];
+  const project = currentProject.data;
+  const columns = currentProject.columns || [];
+  const cards = currentProject.cards || [];
 
   const handleAddColumn = async () => {
-    if (columnName.trim()) {
-      if (selectedColumn) {
-        await updateColumnMutation.mutateAsync({ id: selectedColumn.id, name: columnName });
-      } else {
-        await addColumnMutation.mutateAsync(columnName);
+    if (columnName.trim() && activeBoard?.id) {
+      try {
+        setIsMutationPending(true);
+        if (selectedColumn) {
+          await dispatch(updateColumnThunk({ id: selectedColumn.id, data: { name: columnName } })).unwrap();
+        } else {
+          await dispatch(createColumnThunk({ boardId: activeBoard.id, data: { name: columnName } })).unwrap();
+        }
+        dispatch(fetchBoardColumns(activeBoard.id));
+        columnDialog.onFalse();
+        setColumnName('');
+        setSelectedColumn(null);
+      } catch (err) {
+        toast.error(err || 'Failed to save column');
+      } finally {
+        setIsMutationPending(false);
       }
     }
   };
 
   const handleQuickAddTask = async (columnId: string) => {
-    if (quickAddTaskTitle.trim()) {
-      await addCardMutation.mutateAsync({ columnId, title: quickAddTaskTitle });
-      setQuickAddTaskTitle('');
-      setQuickAddTaskColumnId(null);
+    if (quickAddTaskTitle.trim() && activeBoard?.id) {
+      try {
+        setIsMutationPending(true);
+        await dispatch(createCardThunk({ boardId: activeBoard.id, data: { columnId, title: quickAddTaskTitle } })).unwrap();
+        dispatch(fetchBoardCards(activeBoard.id));
+        setQuickAddTaskTitle('');
+        setQuickAddTaskColumnId(null);
+      } catch (err) {
+        toast.error(err || 'Failed to add task');
+      } finally {
+        setIsMutationPending(false);
+      }
     }
   };
 
   const handleRenameColumn = async (columnId: string) => {
-    if (editingColumnName.trim()) {
-      await updateColumnMutation.mutateAsync({ id: columnId, name: editingColumnName });
-      setEditingColumnId(null);
-    }
-  };
-
-  const handleAddTask = async () => {
-    if (taskTitle.trim()) {
-      if (selectedCard) {
-        await updateCardMutation.mutateAsync({ 
-          id: selectedCard.id, 
-          data: { title: taskTitle, description: taskDescription, columnId: activeColumnId, priority: taskPriority } 
-        });
-      } else if (activeColumnId) {
-        await addCardMutation.mutateAsync({ columnId: activeColumnId, title: taskTitle, priority: taskPriority });
+    if (editingColumnName.trim() && activeBoard?.id) {
+      try {
+        setIsMutationPending(true);
+        await dispatch(updateColumnThunk({ id: columnId, data: { name: editingColumnName } })).unwrap();
+        dispatch(fetchBoardColumns(activeBoard.id));
+        setEditingColumnId(null);
+      } catch (err) {
+        toast.error(err || 'Failed to rename column');
+      } finally {
+        setIsMutationPending(false);
       }
     }
   };
@@ -232,9 +180,20 @@ export function ProjectDetailsView({ id }: Props) {
     handleCloseMenu();
   };
 
-  const handleDeleteColumn = () => {
-    confirmDeleteColumn.onTrue();
-    handleCloseMenu();
+  const handleDeleteColumn = async () => {
+    if (menuData?.id && activeBoard?.id) {
+      try {
+        setIsMutationPending(true);
+        await dispatch(deleteColumnThunk(menuData.id)).unwrap();
+        dispatch(fetchBoardColumns(activeBoard.id));
+        dispatch(fetchBoardCards(activeBoard.id));
+        confirmDeleteColumn.onFalse();
+      } catch (err) {
+        toast.error(err || 'Failed to delete column');
+      } finally {
+        setIsMutationPending(false);
+      }
+    }
   };
 
   const handleEditCard = (card: any) => {
@@ -246,20 +205,34 @@ export function ProjectDetailsView({ id }: Props) {
     taskDrawer.onTrue();
   };
 
-  const handleDeleteCard = () => {
-    confirmDeleteCard.onTrue();
-    handleCloseMenu();
+  const handleDeleteCard = async () => {
+    if (menuData?.id && activeBoard?.id) {
+      try {
+        setIsMutationPending(true);
+        await dispatch(deleteCardThunk(menuData.id)).unwrap();
+        dispatch(fetchBoardCards(activeBoard.id));
+        confirmDeleteCard.onFalse();
+      } catch (err) {
+        toast.error(err || 'Failed to delete task');
+      } finally {
+        setIsMutationPending(false);
+      }
+    }
   };
 
   const handleMoveCard = async (cardId: string, newColumnId: string) => {
-    const normalizedCardId = String(cardId);
-    const normalizedTargetColumnId = String(newColumnId);
-    const card = cards.find((c: any) => String(c.id) === normalizedCardId);
-    if (card && String(card.columnId) !== normalizedTargetColumnId) {
-      await updateCardMutation.mutateAsync({ 
-        id: normalizedCardId,
-        data: { ...card, columnId: normalizedTargetColumnId } 
-      });
+    if (!activeBoard?.id) return;
+    const card = cards.find((c: any) => String(c.id) === String(cardId));
+    if (card && String(card.columnId) !== String(newColumnId)) {
+      try {
+        await dispatch(updateCardThunk({ 
+          id: String(cardId),
+          data: { ...card, columnId: String(newColumnId) } 
+        })).unwrap();
+        dispatch(fetchBoardCards(activeBoard.id));
+      } catch (err) {
+        toast.error(err || 'Failed to move task');
+      }
     }
   };
 
@@ -308,6 +281,8 @@ export function ProjectDetailsView({ id }: Props) {
 
   const onDropOnColumn = async (e: React.DragEvent, targetColumnId: string) => {
     e.preventDefault();
+    if (!activeBoard?.id) return;
+
     if (draggingColumnId) {
       const ids = columns.map((col: any) => String(col.id));
       const sourceIndex = ids.findIndex((id: string) => id === draggingColumnId);
@@ -316,7 +291,12 @@ export function ProjectDetailsView({ id }: Props) {
         const reordered = [...ids];
         const [moved] = reordered.splice(sourceIndex, 1);
         reordered.splice(targetIndex, 0, moved);
-        await reorderColumnsMutation.mutateAsync(reordered);
+        try {
+          await dispatch(reorderColumnsThunk({ boardId: activeBoard.id, orderedIds: reordered })).unwrap();
+          dispatch(fetchBoardColumns(activeBoard.id));
+        } catch (err) {
+          setReorderError('Failed to reorder columns.');
+        }
       }
       setDraggingColumnId(null);
       setDragOverColumnOrderId(null);
@@ -329,6 +309,10 @@ export function ProjectDetailsView({ id }: Props) {
       setDragOverColumnId(null);
     }
   };
+
+  if (currentProject.loading && !project) {
+    return <ProjectSkeleton />;
+  }
 
   return (
     <DashboardContent maxWidth={false}>
@@ -353,7 +337,7 @@ export function ProjectDetailsView({ id }: Props) {
                variant="contained" 
                startIcon={<Iconify icon="mingcute:add-line" />}
                onClick={columnDialog.onTrue}
-               disabled={addColumnMutation.isPending}
+               disabled={isMutationPending}
              >
                 New Column
              </Button>
@@ -443,7 +427,7 @@ export function ProjectDetailsView({ id }: Props) {
                 </Typography>
                 <IconButton
                   size="small"
-                  draggable={!reorderColumnsMutation.isPending}
+                  draggable={!isMutationPending}
                   onDragStart={(e) => onColumnHandleDragStart(e, column.id)}
                   onDragEnd={onColumnDragEnd}
                   sx={{ cursor: 'grab' }}
@@ -577,7 +561,7 @@ export function ProjectDetailsView({ id }: Props) {
                     />
                     <Stack direction="row" justifyContent="flex-end" spacing={1}>
                       <Button size="small" color="inherit" onClick={() => setQuickAddTaskColumnId(null)}>Cancel</Button>
-                      <Button size="small" variant="contained" onClick={() => handleQuickAddTask(column.id)}>Add</Button>
+                      <Button size="small" variant="contained" onClick={() => handleQuickAddTask(column.id)} disabled={isMutationPending}>Add</Button>
                     </Stack>
                   </Card>
                 ) : (
@@ -587,7 +571,7 @@ export function ProjectDetailsView({ id }: Props) {
                     color="inherit" 
                     startIcon={<Iconify icon="mingcute:add-line" />}
                     onClick={() => setQuickAddTaskColumnId(column.id)}
-                    disabled={addCardMutation.isPending}
+                    disabled={isMutationPending}
                   >
                     Add Task
                   </Button>
@@ -596,7 +580,7 @@ export function ProjectDetailsView({ id }: Props) {
             </Box>
           ))}
 
-          {columns.length === 0 && (
+          {columns.length === 0 && !currentProject.loading && (
             <Box sx={{ textAlign: 'center', py: 10, width: '100%', bgcolor: 'background.neutral', borderRadius: 2 }}>
                <Typography variant="h6" color="text.secondary">No columns yet. Start by adding one!</Typography>
             </Box>
@@ -605,7 +589,6 @@ export function ProjectDetailsView({ id }: Props) {
       </Scrollbar>
       )}
 
-      {/* Shared Menu */}
       <Menu
         anchorEl={menuAnchorEl}
         open={Boolean(menuAnchorEl)}
@@ -636,13 +619,12 @@ export function ProjectDetailsView({ id }: Props) {
           </MenuItem>
         ))}
 
-        <MenuItem onClick={menuType === 'column' ? handleDeleteColumn : handleDeleteCard} sx={{ color: 'error.main' }}>
+        <MenuItem onClick={menuType === 'column' ? () => confirmDeleteColumn.onTrue() : () => confirmDeleteCard.onTrue()} sx={{ color: 'error.main' }}>
           <Iconify icon="solar:trash-bin-trash-bold" sx={{ mr: 1 }} />
           Delete {menuType === 'column' ? 'Column' : 'Task'}
         </MenuItem>
       </Menu>
 
-      {/* Confirm Delete Column */}
       <ConfirmDialog
         open={confirmDeleteColumn.value}
         onClose={confirmDeleteColumn.onFalse}
@@ -652,15 +634,14 @@ export function ProjectDetailsView({ id }: Props) {
           <Button 
             variant="contained" 
             color="error" 
-            onClick={() => deleteColumnMutation.mutate(menuData.id)}
-            disabled={deleteColumnMutation.isPending}
+            onClick={handleDeleteColumn}
+            disabled={isMutationPending}
           >
             Delete
           </Button>
         }
       />
 
-      {/* Confirm Delete Card */}
       <ConfirmDialog
         open={confirmDeleteCard.value}
         onClose={confirmDeleteCard.onFalse}
@@ -670,15 +651,14 @@ export function ProjectDetailsView({ id }: Props) {
           <Button 
             variant="contained" 
             color="error" 
-            onClick={() => deleteCardMutation.mutate(menuData.id)}
-            disabled={deleteCardMutation.isPending}
+            onClick={handleDeleteCard}
+            disabled={isMutationPending}
           >
             Delete
           </Button>
         }
       />
 
-      {/* Column Dialog */}
       <Dialog open={columnDialog.value} onClose={columnDialog.onFalse} fullWidth maxWidth="xs">
         <DialogTitle>{selectedColumn ? 'Edit Column' : 'New Column'}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
@@ -696,23 +676,29 @@ export function ProjectDetailsView({ id }: Props) {
           <Button 
             variant="contained" 
             onClick={handleAddColumn} 
-            disabled={!columnName.trim() || addColumnMutation.isPending || updateColumnMutation.isPending}
+            disabled={!columnName.trim() || isMutationPending}
           >
-             {addColumnMutation.isPending || updateColumnMutation.isPending ? 'Saving...' : 'Save'}
+             {isMutationPending ? 'Saving...' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Task Detail Drawer */}
       <TaskDetailDrawer
         open={taskDrawer.value}
         onClose={taskDrawer.onFalse}
         task={selectedCard}
         columns={columns}
         onUpdate={async (data) => {
-          await updateCardMutation.mutateAsync({ id: selectedCard.id, data });
+          if (!selectedCard?.id || !activeBoard?.id) return;
+          try {
+            await dispatch(updateCardThunk({ id: selectedCard.id, data })).unwrap();
+            dispatch(fetchBoardCards(activeBoard.id));
+          } catch (err) {
+            toast.error(err || 'Failed to update task');
+          }
         }}
         onDelete={() => {
+          setMenuData(selectedCard);
           confirmDeleteCard.onTrue();
           taskDrawer.onFalse();
         }}

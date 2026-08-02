@@ -1,7 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOmniInstances, 
+  createOmniInstanceThunk, 
+  deleteOmniInstanceThunk, 
+  selectOmni 
+} from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -20,6 +26,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import LinearProgress from '@mui/material/LinearProgress';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 import { omniChannelService } from 'src/services/omni-service';
@@ -32,6 +39,9 @@ import { ConfirmDialog } from 'src/components/custom-dialog';
 // ----------------------------------------------------------------------
 
 export function ChannelListView() {
+  const dispatch = useAppDispatch();
+  const { instances } = useAppSelector(selectOmni);
+
   const [openConnect, setOpenConnect] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'whatsapp' | 'telegram'>('whatsapp');
   const [instanceName, setInstanceName] = useState('');
@@ -39,10 +49,9 @@ export function ChannelListView() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const { data: instances, isLoading, refetch } = useQuery({
-    queryKey: ['omni-instances'],
-    queryFn: () => omniChannelService.getInstances(),
-  });
+  useEffect(() => {
+    dispatch(fetchOmniInstances());
+  }, [dispatch]);
 
   const handleOpenConnect = () => setOpenConnect(true);
   const handleCloseConnect = () => {
@@ -54,17 +63,17 @@ export function ChannelListView() {
   const handleCreateInstance = async () => {
     setIsGenerating(true);
     try {
-      const instance = await omniChannelService.createInstance({
+      const instance = await dispatch(createOmniInstanceThunk({
         provider: selectedProvider,
         name: instanceName || `${selectedProvider} Account`,
-      });
+      })).unwrap();
 
       if (selectedProvider === 'whatsapp') {
         const qrData = await omniChannelService.getWhatsAppQR(instance.instanceId);
         setQrCode(qrData.qr);
       } else {
         handleCloseConnect();
-        refetch();
+        dispatch(fetchOmniInstances());
       }
     } catch (error) {
       console.error(error);
@@ -76,15 +85,15 @@ export function ChannelListView() {
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
-      const target = (instances || []).find((item: any) => item.id === deleteId);
+      const target = instances.data.find((item: any) => item.id === deleteId);
       if (!target) return;
 
-      if (target.provider === 'telegram') {
-        await omniChannelService.deleteTelegramSession(target.instanceId);
-      } else {
-        await omniChannelService.deleteInstance(target.instanceId);
-      }
-      refetch();
+      await dispatch(deleteOmniInstanceThunk({ 
+        instanceId: target.instanceId, 
+        provider: target.provider 
+      })).unwrap();
+      
+      dispatch(fetchOmniInstances());
       setDeleteId(null);
     } catch (error) {
       console.error(error);
@@ -100,7 +109,10 @@ export function ChannelListView() {
     }
   };
 
-  if (isLoading) {
+  const isLoading = instances.loading;
+  const instancesData = instances.data;
+
+  if (isLoading && !instancesData.length) {
     return <Box sx={{ p: 5, textAlign: 'center' }}><LinearProgress /></Box>;
   }
 
@@ -131,7 +143,7 @@ export function ChannelListView() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(instances || []).map((row: any) => (
+              {instancesData.map((row: any) => (
                 <TableRow key={row.id}>
                   <TableCell>
                     <Typography variant="subtitle2" noWrap>{row.name}</Typography>
@@ -212,7 +224,7 @@ export function ChannelListView() {
           <Button onClick={handleCloseConnect} color="inherit">Cancel</Button>
           {!qrCode && (
             <Button variant="contained" onClick={handleCreateInstance} disabled={isGenerating}>
-              {isGenerating ? <LinearProgress size={24} /> : 'Generate Connection'}
+              {isGenerating ? <CircularProgress size={24} color="inherit" /> : 'Generate Connection'}
             </Button>
           )}
         </DialogActions>

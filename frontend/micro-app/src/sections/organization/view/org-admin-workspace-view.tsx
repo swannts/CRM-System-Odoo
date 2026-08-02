@@ -2,9 +2,16 @@
 
 import Link from 'next/link';
 import { z as zod } from 'zod';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOrgDetailsThunk, 
+  fetchOrgLocationsThunk, 
+  createOrgLocationThunk,
+  selectOrganization 
+} from 'src/store/slices/organization-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -19,9 +26,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { paths } from 'src/routes/paths';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { organizationService } from 'src/services/organization-service';
-
 import { Form, RHFTextField } from 'src/components/hook-form';
+import { toast } from 'src/components/snackbar';
 
 import { FeatureRouteShell } from 'src/sections/parity/feature-route-shell';
 
@@ -67,7 +73,10 @@ export function OrgAdminWorkspaceView({
   duration,
   token,
 }: Props) {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const { orgDetails, locations } = useAppSelector(selectOrganization);
+  const [isLocationPending, setIsLocationPending] = useState(false);
+
   const methods = useForm({
     resolver: zodResolver(LocationSchema),
     defaultValues: {
@@ -82,25 +91,30 @@ export function OrgAdminWorkspaceView({
     },
   });
 
-  const orgQuery = useQuery({
-    queryKey: ['org-admin-details'],
-    queryFn: () => organizationService.getOrganizationDetails(),
-  });
+  useEffect(() => {
+    dispatch(fetchOrgDetailsThunk());
+    dispatch(fetchOrgLocationsThunk());
+  }, [dispatch]);
 
-  const locationsQuery = useQuery({
-    queryKey: ['org-admin-locations'],
-    queryFn: () => organizationService.getLocations(),
-  });
+  const isLoading = orgDetails.loading || locations.loading;
+  const organization = orgDetails.data;
+  const locationsData = locations.data || [];
 
-  const createLocationMutation = useMutation({
-    mutationFn: (values: any) => organizationService.createLocation(values),
-    onSuccess: async () => {
+  const handleCreateLocation = async (values: any) => {
+    try {
+      setIsLocationPending(true);
+      await dispatch(createOrgLocationThunk(values)).unwrap();
       methods.reset();
-      await queryClient.invalidateQueries({ queryKey: ['org-admin-locations'] });
-    },
-  });
+      dispatch(fetchOrgLocationsThunk());
+      toast.success('Location created successfully');
+    } catch (err) {
+      toast.error(err || 'Failed to create location');
+    } finally {
+      setIsLocationPending(false);
+    }
+  };
 
-  if (orgQuery.isLoading || locationsQuery.isLoading) {
+  if (isLoading && !organization) {
     return (
       <Box sx={{ py: 8, textAlign: 'center' }}>
         <CircularProgress />
@@ -133,14 +147,14 @@ export function OrgAdminWorkspaceView({
 
             {mode === 'organizations' || mode === 'organization-detail' || mode === 'organization-location' ? (
               <>
-                <Typography variant="body2">Name: {orgQuery.data?.name || 'Unknown'}</Typography>
-                <Typography variant="body2">Email: {orgQuery.data?.email || 'N/A'}</Typography>
-                <Typography variant="body2">Organization ID: {organizationId || orgQuery.data?.id || 'current-org'}</Typography>
+                <Typography variant="body2">Name: {organization?.name || 'Unknown'}</Typography>
+                <Typography variant="body2">Email: {organization?.email || 'N/A'}</Typography>
+                <Typography variant="body2">Organization ID: {organizationId || organization?.id || 'current-org'}</Typography>
                 {mode === 'organization-location' && (
                   <>
                     <Divider />
                     <Typography variant="subtitle2">Locations</Typography>
-                    {(locationsQuery.data || []).map((location: any) => (
+                    {locationsData.map((location: any) => (
                       <Box key={location.id} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.neutral' }}>
                         <Typography variant="subtitle2">{location.name}</Typography>
                         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -192,7 +206,7 @@ export function OrgAdminWorkspaceView({
             <Typography variant="body2">organizationId: {organizationId || 'n/a'}</Typography>
             <Typography variant="body2">userId: {userId || 'n/a'}</Typography>
             <Typography variant="body2">token: {token || 'n/a'}</Typography>
-            <Typography variant="body2">locations: {(locationsQuery.data || []).length}</Typography>
+            <Typography variant="body2">locations: {locationsData.length}</Typography>
           </Stack>
         </Card>
       </Grid>
@@ -203,7 +217,7 @@ export function OrgAdminWorkspaceView({
             <Typography variant="h6" sx={{ mb: 2 }}>
               Add Location
             </Typography>
-            <Form methods={methods} onSubmit={methods.handleSubmit((values) => createLocationMutation.mutate(values))}>
+            <Form methods={methods} onSubmit={methods.handleSubmit(handleCreateLocation)}>
               <Stack spacing={2}>
                 <RHFTextField name="name" label="Location Name" />
                 <RHFTextField name="email" label="Email" />
@@ -213,7 +227,7 @@ export function OrgAdminWorkspaceView({
                 <RHFTextField name="state" label="State" />
                 <RHFTextField name="zip_code" label="Zip Code" />
                 <RHFTextField name="country" label="Country" />
-                <Button type="submit" variant="contained" disabled={createLocationMutation.isPending}>
+                <Button type="submit" variant="contained" disabled={isLocationPending}>
                   Create Location
                 </Button>
               </Stack>

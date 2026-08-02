@@ -1,146 +1,123 @@
-import type { SalesStage, SalesFilters, SalesActivity, SalesOpportunity } from 'src/sections/sales/types';
-
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-
+import { useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
 import {
-  getSalesLeads,
-  getSalesOrders,
-  getSalesSummary,
-  getSalesAnalytics,
-  getSalesActivities,
-  createSalesActivity,
-  runMagentoToOdooSync,
-  completeSalesActivity,
-  getSalesOpportunities,
-  createSalesOpportunity,
-  linkOrderToOpportunity,
-  updateOpportunityStage,
-  updateSalesOpportunity,
-  previewMagentoToOdooSync,
-  getSalesStages,
-  deleteSalesActivity,
-  deleteSalesOpportunity,
-  createOpportunityNote,
-} from 'src/services/sales-dashboard-service';
+  fetchSalesSummary,
+  fetchSalesOrders,
+  fetchSalesLeads,
+  fetchSalesOpportunities,
+  fetchSalesActivities,
+  fetchSalesAnalytics,
+  fetchSalesStages,
+  createOpportunityThunk,
+  updateOpportunityThunk,
+  updateOpportunityStageThunk,
+  createSalesActivityThunk,
+  completeSalesActivityThunk,
+  deleteSalesActivityThunk,
+  deleteSalesOpportunityThunk,
+  createOpportunityNoteThunk,
+  previewSyncThunk,
+  runSyncThunk,
+  linkOrderToOpportunityThunk,
+  selectSales,
+} from 'src/store/slices/sales-slice';
+import type { SalesFilters, SalesOpportunity, SalesStage, SalesActivity } from 'src/sections/sales/types';
 
-export const salesDashboardKeys = {
-  all: ['sales-dashboard'] as const,
-  summary: (filters?: SalesFilters) => [...salesDashboardKeys.all, 'summary', filters ?? {}] as const,
-  orders: (filters?: SalesFilters) => [...salesDashboardKeys.all, 'orders', filters ?? {}] as const,
-  leads: (filters?: SalesFilters) => [...salesDashboardKeys.all, 'leads', filters ?? {}] as const,
-  opportunities: (filters?: SalesFilters) => [...salesDashboardKeys.all, 'opportunities', filters ?? {}] as const,
-  activities: (filters?: SalesFilters) => [...salesDashboardKeys.all, 'activities', filters ?? {}] as const,
-  analytics: (filters?: SalesFilters) => [...salesDashboardKeys.all, 'analytics', filters ?? {}] as const,
-  stages: () => [...salesDashboardKeys.all, 'stages'] as const,
-  timeline: (id: string | number) => [...salesDashboardKeys.all, 'timeline', id] as const,
-};
+export function useSalesDashboard() {
+  const dispatch = useAppDispatch();
+  const sales = useAppSelector(selectSales);
 
-export function useSalesStages() {
-  return useQuery({ queryKey: salesDashboardKeys.stages(), queryFn: getSalesStages, staleTime: 60 * 60 * 1000 });
-}
+  const loadSummary = useCallback((filters?: SalesFilters) => {
+    dispatch(fetchSalesSummary(filters));
+  }, [dispatch]);
 
-export function useSalesSummary(filters?: SalesFilters) {
-  return useQuery({ queryKey: salesDashboardKeys.summary(filters), queryFn: () => getSalesSummary(filters), staleTime: 30 * 1000 });
-}
+  const loadOrders = useCallback((filters?: SalesFilters) => {
+    dispatch(fetchSalesOrders(filters));
+  }, [dispatch]);
 
-export function useSalesOrders(filters?: SalesFilters) {
-  return useQuery({ queryKey: salesDashboardKeys.orders(filters), queryFn: () => getSalesOrders(filters), staleTime: 30 * 1000 });
-}
+  const loadLeads = useCallback((filters?: SalesFilters) => {
+    dispatch(fetchSalesLeads(filters));
+  }, [dispatch]);
 
-export function useSalesLeads(filters?: SalesFilters) {
-  return useQuery({ queryKey: salesDashboardKeys.leads(filters), queryFn: () => getSalesLeads(filters), staleTime: 30 * 1000 });
-}
+  const loadOpportunities = useCallback((filters?: SalesFilters) => {
+    dispatch(fetchSalesOpportunities(filters));
+  }, [dispatch]);
 
-export function useSalesOpportunities(filters?: SalesFilters) {
-  return useQuery({ queryKey: salesDashboardKeys.opportunities(filters), queryFn: () => getSalesOpportunities(filters), staleTime: 30 * 1000 });
-}
+  const loadActivities = useCallback((filters?: SalesFilters) => {
+    dispatch(fetchSalesActivities(filters));
+  }, [dispatch]);
 
-export function useSalesActivities(filters?: SalesFilters) {
-  return useQuery({ queryKey: salesDashboardKeys.activities(filters), queryFn: () => getSalesActivities(filters), staleTime: 30 * 1000 });
-}
+  const loadAnalytics = useCallback((filters?: SalesFilters) => {
+    dispatch(fetchSalesAnalytics(filters));
+  }, [dispatch]);
 
-export function useSalesAnalytics(filters?: SalesFilters) {
-  return useQuery({ queryKey: salesDashboardKeys.analytics(filters), queryFn: () => getSalesAnalytics(filters), staleTime: 30 * 1000 });
-}
+  const loadStages = useCallback(() => {
+    dispatch(fetchSalesStages());
+  }, [dispatch]);
 
-async function invalidateSales(queryClient: ReturnType<typeof useQueryClient>) {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ['sales-dashboard', 'summary'] }),
-    queryClient.invalidateQueries({ queryKey: ['sales-dashboard', 'orders'] }),
-    queryClient.invalidateQueries({ queryKey: ['sales-dashboard', 'leads'] }),
-    queryClient.invalidateQueries({ queryKey: ['sales-dashboard', 'opportunities'] }),
-    queryClient.invalidateQueries({ queryKey: ['sales-dashboard', 'activities'] }),
-    queryClient.invalidateQueries({ queryKey: ['sales-dashboard', 'analytics'] }),
-    queryClient.invalidateQueries({ queryKey: ['sales-dashboard', 'timeline'] }),
-  ]);
-}
+  const createOpportunity = useCallback(async (payload: any) => {
+    return dispatch(createOpportunityThunk(payload)).unwrap();
+  }, [dispatch]);
 
-export function useCreateSalesOpportunity() {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: createSalesOpportunity, onSuccess: async () => invalidateSales(queryClient) });
-}
+  const updateOpportunity = useCallback(async (id: string, payload: Partial<SalesOpportunity>) => {
+    return dispatch(updateOpportunityThunk({ id, payload })).unwrap();
+  }, [dispatch]);
 
-export function useUpdateSalesOpportunity() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<SalesOpportunity> }) => updateSalesOpportunity(id, payload),
-    onSuccess: async () => invalidateSales(queryClient),
-  });
-}
+  const updateStage = useCallback(async (id: string, stage: SalesStage, stageId?: number) => {
+    return dispatch(updateOpportunityStageThunk({ id, stage, stageId })).unwrap();
+  }, [dispatch]);
 
-export function useUpdateOpportunityStage() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, stage, stageId }: { id: string; stage: SalesStage; stageId?: number }) => updateOpportunityStage(id, stage, stageId),
-    onSuccess: async () => invalidateSales(queryClient),
-  });
-}
+  const createActivity = useCallback(async (opportunityId: string, payload: { type: SalesActivity['type']; title: string; dueDate?: string }) => {
+    return dispatch(createSalesActivityThunk({ opportunityId, payload })).unwrap();
+  }, [dispatch]);
 
-export function useCreateSalesActivity() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ opportunityId, payload }: { opportunityId: string; payload: { type: SalesActivity['type']; title: string; dueDate?: string } }) =>
-      createSalesActivity(opportunityId, payload),
-    onSuccess: async () => invalidateSales(queryClient),
-  });
-}
+  const completeActivity = useCallback(async (id: string) => {
+    return dispatch(completeSalesActivityThunk(id)).unwrap();
+  }, [dispatch]);
 
-export function useCompleteSalesActivity() {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: completeSalesActivity, onSuccess: async () => invalidateSales(queryClient) });
-}
+  const deleteActivity = useCallback(async (id: string) => {
+    return dispatch(deleteSalesActivityThunk(id)).unwrap();
+  }, [dispatch]);
 
-export function useDeleteSalesActivity() {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: deleteSalesActivity, onSuccess: async () => invalidateSales(queryClient) });
-}
+  const deleteOpportunity = useCallback(async (id: string) => {
+    return dispatch(deleteSalesOpportunityThunk(id)).unwrap();
+  }, [dispatch]);
 
-export function useDeleteSalesOpportunity() {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: deleteSalesOpportunity, onSuccess: async () => invalidateSales(queryClient) });
-}
+  const createNote = useCallback(async (id: string | number, body: string) => {
+    return dispatch(createOpportunityNoteThunk({ id, body })).unwrap();
+  }, [dispatch]);
 
-export function useCreateOpportunityNote() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string | number; body: string }) => createOpportunityNote(id, body),
-    onSuccess: async () => invalidateSales(queryClient),
-  });
-}
+  const previewSync = useCallback(async () => {
+    return dispatch(previewSyncThunk()).unwrap();
+  }, [dispatch]);
 
-export function usePreviewMagentoToOdooSync() {
-  return useMutation({ mutationFn: previewMagentoToOdooSync });
-}
+  const runSync = useCallback(async () => {
+    return dispatch(runSyncThunk()).unwrap();
+  }, [dispatch]);
 
-export function useRunMagentoToOdooSync() {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: runMagentoToOdooSync, onSuccess: async () => invalidateSales(queryClient) });
-}
+  const linkOrder = useCallback(async (orderId: string, opportunityId: string) => {
+    return dispatch(linkOrderToOpportunityThunk({ orderId, opportunityId })).unwrap();
+  }, [dispatch]);
 
-export function useLinkOrderToOpportunity() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ orderId, opportunityId }: { orderId: string; opportunityId: string }) => linkOrderToOpportunity(orderId, opportunityId),
-    onSuccess: async () => invalidateSales(queryClient),
-  });
+  return {
+    ...sales,
+    loadSummary,
+    loadOrders,
+    loadLeads,
+    loadOpportunities,
+    loadActivities,
+    loadAnalytics,
+    loadStages,
+    createOpportunity,
+    updateOpportunity,
+    updateStage,
+    createActivity,
+    completeActivity,
+    deleteActivity,
+    deleteOpportunity,
+    createNote,
+    previewSync,
+    runSync,
+    linkOrder,
+  };
 }

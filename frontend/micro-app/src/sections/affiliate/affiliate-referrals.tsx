@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchAffiliateListThunk, selectAffiliate } from 'src/store/slices/affiliate-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -13,25 +15,30 @@ import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import Typography from '@mui/material/Typography';
 import TableContainer from '@mui/material/TableContainer';
+import LinearProgress from '@mui/material/LinearProgress';
 
 import { fDate } from 'src/utils/format-time';
 import { fCurrency } from 'src/utils/format-number';
-
-import { affiliateService } from 'src/services/affiliate-service';
 
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function AffiliateReferrals() {
-  const { data: affiliates } = useQuery({
-    queryKey: ['affiliate-list'],
-    queryFn: () => affiliateService.getAffiliates(),
-  });
+  const dispatch = useAppDispatch();
+  const { list } = useAppSelector(selectAffiliate);
+
+  useEffect(() => {
+    dispatch(fetchAffiliateListThunk());
+  }, [dispatch]);
+
+  const affiliatesData = list.data;
+  const isLoading = list.loading;
 
   return (
     <Card sx={{ p: 3 }}>
       <Typography variant="h6" sx={{ mb: 3 }}>My Referrals</Typography>
+      {isLoading && !affiliatesData.length && <LinearProgress sx={{ mb: 2 }} />}
       <TableContainer>
         <Table>
           <TableHead>
@@ -44,7 +51,7 @@ export function AffiliateReferrals() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {(affiliates || []).map((row: any) => (
+            {affiliatesData.map((row: any) => (
               <TableRow key={row.id}>
                 <TableCell>
                   <Stack direction="row" alignItems="center" spacing={2}>
@@ -76,7 +83,7 @@ export function AffiliateReferrals() {
                 </TableCell>
               </TableRow>
             ))}
-            {(affiliates || []).length === 0 && (
+            {affiliatesData.length === 0 && !isLoading && (
               <TableRow>
                 <TableCell colSpan={5} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
                   You haven't referred any users yet.

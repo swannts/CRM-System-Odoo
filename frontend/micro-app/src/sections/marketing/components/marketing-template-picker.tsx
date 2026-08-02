@@ -1,3 +1,7 @@
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchTemplates, selectMarketing } from 'src/store/slices/marketing-slice';
+
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
 import Button from '@mui/material/Button';
@@ -12,7 +16,6 @@ import CardActionArea from '@mui/material/CardActionArea';
 import { Label } from 'src/components/label';
 
 import { MarketingTemplate } from '../types';
-import { useMarketingTemplates } from '../hooks/use-marketing';
 
 type Props = {
   open: boolean;
@@ -21,7 +24,17 @@ type Props = {
 };
 
 export function MarketingTemplatePicker({ open, onClose, onSelect }: Props) {
-  const { data: templates = [], isLoading } = useMarketingTemplates();
+  const dispatch = useAppDispatch();
+  const { templates: templatesState } = useAppSelector(selectMarketing);
+
+  const templates = templatesState.data;
+  const isLoading = templatesState.loading;
+
+  useEffect(() => {
+    if (open) {
+      dispatch(fetchTemplates());
+    }
+  }, [dispatch, open]);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">

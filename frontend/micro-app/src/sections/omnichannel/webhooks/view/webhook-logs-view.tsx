@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchOmniWebhookLogs, selectOmni } from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -16,9 +18,7 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 
 import { useParams } from 'src/routes/hooks';
-
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniAutomationService } from 'src/services/omni-service';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -29,13 +29,19 @@ import { Scrollbar } from 'src/components/scrollbar';
 export function WebhookLogsView() {
   const params = useParams();
   const id = params.id as string;
+  const dispatch = useAppDispatch();
+  const { webhookLogs } = useAppSelector(selectOmni);
 
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ['omni-webhook-logs', id],
-    queryFn: () => omniAutomationService.getWebhookLogs(id),
-  });
+  useEffect(() => {
+    if (id) {
+      dispatch(fetchOmniWebhookLogs(id));
+    }
+  }, [dispatch, id]);
 
-  if (isLoading) {
+  const isLoading = webhookLogs.loading;
+  const logs = webhookLogs.data;
+
+  if (isLoading && !logs.length) {
     return <Box sx={{ p: 5, textAlign: 'center' }}><LinearProgress /></Box>;
   }
 
@@ -57,7 +63,7 @@ export function WebhookLogsView() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(logs || []).map((row: any) => (
+              {logs.map((row: any) => (
                 <TableRow key={row.id}>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {new Date(row.createdAt).toLocaleString()}
@@ -90,6 +96,13 @@ export function WebhookLogsView() {
                   </TableCell>
                 </TableRow>
               ))}
+              {logs.length === 0 && !isLoading && (
+                 <TableRow>
+                   <TableCell colSpan={3} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                     No logs found for this webhook.
+                   </TableCell>
+                 </TableRow>
+              )}
             </TableBody>
           </Table>
         </Scrollbar>

@@ -1,7 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOmniInstances, 
+  createOmniInstanceThunk, 
+  deleteOmniInstanceThunk,
+  fetchWhatsAppQRThunk,
+  selectOmnichannel 
+} from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -16,15 +23,16 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import LinearProgress from '@mui/material/LinearProgress';
 
-import { omniChannelService } from 'src/services/omni-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
 export function OmniIntegrationView() {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const { instances, qr } = useAppSelector(selectOmnichannel);
+
   const [openAdd, setOpenAdd] = useState(false);
   const [newInstance, setNewInstance] = useState<{ name: string; provider: 'whatsapp' | 'telegram' }>({
     name: '',
@@ -33,26 +41,51 @@ export function OmniIntegrationView() {
   
   const [openQR, setOpenQR] = useState(false);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
-  const { data: instances, isLoading } = useQuery({
-    queryKey: ['omni-instances'],
-    queryFn: () => omniChannelService.getInstances(),
-  });
+  useEffect(() => {
+    dispatch(fetchOmniInstances());
+  }, [dispatch]);
 
-  const { data: qrData, isLoading: qrLoading } = useQuery({
-    queryKey: ['omni-qr', selectedInstanceId],
-    queryFn: () => omniChannelService.getWhatsAppQR(selectedInstanceId!),
-    enabled: !!selectedInstanceId && openQR,
-    refetchInterval: 20000, // Refresh QR every 20s
-  });
+  const fetchQR = useCallback(() => {
+    if (selectedInstanceId && openQR) {
+      dispatch(fetchWhatsAppQRThunk(selectedInstanceId));
+    }
+  }, [dispatch, selectedInstanceId, openQR]);
 
-  const createMutation = useMutation({
-    mutationFn: omniChannelService.createInstance,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['omni-instances'] });
+  useEffect(() => {
+    fetchQR();
+    const interval = setInterval(fetchQR, 20000);
+    return () => clearInterval(interval);
+  }, [fetchQR]);
+
+  const handleCreate = async () => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(createOmniInstanceThunk(newInstance)).unwrap();
       setOpenAdd(false);
-    },
-  });
+      setNewInstance({ name: '', provider: 'whatsapp' });
+      dispatch(fetchOmniInstances());
+      toast.success('Instance created');
+    } catch (err) {
+      toast.error(err || 'Failed to create instance');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(deleteOmniInstanceThunk(id)).unwrap();
+      dispatch(fetchOmniInstances());
+      toast.success('Instance deleted');
+    } catch (err) {
+      toast.error(err || 'Failed to delete instance');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
   const handleOpenQR = (id: string) => {
     setSelectedInstanceId(id);
@@ -64,7 +97,10 @@ export function OmniIntegrationView() {
     setSelectedInstanceId(null);
   };
 
-  if (isLoading) {
+  const instancesList = instances.data || [];
+  const isLoading = instances.loading;
+
+  if (isLoading && !instancesList.length) {
     return <Box sx={{ p: 5, textAlign: 'center' }}><LinearProgress /></Box>;
   }
 
@@ -87,7 +123,7 @@ export function OmniIntegrationView() {
       </Stack>
 
       <Grid container spacing={3}>
-        {instances.map((instance: any) => (
+        {instancesList.map((instance: any) => (
           <Grid item xs={12} md={6} lg={4} key={instance.id}>
             <Card sx={{ p: 3 }}>
               <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
@@ -120,7 +156,15 @@ export function OmniIntegrationView() {
                     Scan QR
                   </Button>
                 )}
-                <Button fullWidth variant="soft" color="error">Delete</Button>
+                <Button 
+                  fullWidth 
+                  variant="soft" 
+                  color="error"
+                  onClick={() => handleDelete(instance.id)}
+                  disabled={isMutationPending}
+                >
+                  Delete
+                </Button>
               </Stack>
             </Card>
           </Grid>
@@ -166,8 +210,8 @@ export function OmniIntegrationView() {
           <Button onClick={() => setOpenAdd(false)}>Cancel</Button>
           <Button 
             variant="contained" 
-            disabled={!newInstance.name || createMutation.isPending}
-            onClick={() => createMutation.mutate(newInstance)}
+            disabled={!newInstance.name || isMutationPending}
+            onClick={handleCreate}
           >
             Create
           </Button>
@@ -178,11 +222,11 @@ export function OmniIntegrationView() {
       <Dialog open={openQR} onClose={handleCloseQR} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ textAlign: 'center' }}>Scan QR Code</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
-          {qrLoading ? (
-            <LinearProgress />
-          ) : qrData?.qr ? (
+          {qr.loading && !qr.data ? (
+            <LinearProgress sx={{ width: '100%' }} />
+          ) : qr.data?.qr ? (
             <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 2, boxShadow: 1 }}>
-               <img src={qrData.qr} alt="WhatsApp QR" style={{ width: 240, height: 240 }} />
+               <img src={qr.data.qr} alt="WhatsApp QR" style={{ width: 240, height: 240 }} />
             </Box>
           ) : (
             <Typography variant="body2" color="error">Failed to generate QR. Please try again.</Typography>

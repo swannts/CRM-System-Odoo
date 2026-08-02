@@ -1,6 +1,6 @@
-'use client';
-
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchSummary, fetchOverallAnalytics, selectMarketing } from 'src/store/slices/marketing-slice';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -8,18 +8,23 @@ import Typography from '@mui/material/Typography';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
-import { useMarketingSummary } from '../hooks/use-marketing';
-import { marketingService } from '../services/marketing-service';
 import { MarketingSummaryCards } from '../components/marketing-summary-cards';
 import { MarketingUnavailableState } from '../components/marketing-state-blocks';
 import { MarketingCampaignAnalytics } from '../components/marketing-campaign-analytics';
 
 export function MarketingAnalyticsView() {
-  const { data: summary, isLoading } = useMarketingSummary();
-  const analyticsQuery = useQuery({
-    queryKey: ['marketing-overall-analytics'],
-    queryFn: marketingService.getOverallAnalytics,
-  });
+  const dispatch = useAppDispatch();
+  const { summary: summaryState, overallAnalytics: analyticsState } = useAppSelector(selectMarketing);
+
+  const summary = summaryState.data;
+  const summaryLoading = summaryState.loading;
+  const analytics = analyticsState.data;
+  const analyticsLoading = analyticsState.loading;
+
+  useEffect(() => {
+    dispatch(fetchSummary());
+    dispatch(fetchOverallAnalytics());
+  }, [dispatch]);
 
   return (
     <DashboardContent maxWidth="xl">
@@ -38,7 +43,7 @@ export function MarketingAnalyticsView() {
           <MarketingSummaryCards summary={summary} />
         </Box>
 
-        {!analyticsQuery.data ? (
+        {!analytics ? (
           <MarketingUnavailableState
             title="Analytics unavailable"
             description="Marketing analytics are not available yet."
@@ -46,7 +51,7 @@ export function MarketingAnalyticsView() {
         ) : (
           <Box>
             <Typography variant="h6" sx={{ mb: 2 }}>Delivery Performance</Typography>
-            <MarketingCampaignAnalytics analytics={analyticsQuery.data} loading={isLoading || analyticsQuery.isLoading} />
+            <MarketingCampaignAnalytics analytics={analytics} loading={summaryLoading || analyticsLoading} />
           </Box>
         )}
       </Stack>

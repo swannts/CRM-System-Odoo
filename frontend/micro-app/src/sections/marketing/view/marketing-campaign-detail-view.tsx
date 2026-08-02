@@ -1,6 +1,12 @@
-'use client';
-
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchLocalCampaign,
+  fetchSegments,
+  fetchTemplateUsage,
+  fetchDeliveryEvents,
+  selectMarketing,
+} from 'src/store/slices/marketing-slice';
 
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
@@ -15,9 +21,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Iconify } from 'src/components/iconify';
 
-import { marketingService } from '../services/marketing-service';
 import { MarketingCampaignForm } from '../components/marketing-campaign-form';
-import { useMarketingCampaign, useMarketingSegments } from '../hooks/use-marketing';
 
 // ----------------------------------------------------------------------
 
@@ -27,20 +31,39 @@ type Props = {
 
 export function MarketingCampaignDetailView({ id }: Props) {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const isEdit = !!id;
 
-  const { data: campaign, isLoading: campaignLoading } = useMarketingCampaign(id || '');
-  const { data: segments = [], isLoading: segmentsLoading } = useMarketingSegments();
-  const usageQuery = useQuery({
-    queryKey: ['marketing-campaign-template-usage', id],
-    enabled: Boolean(id),
-    queryFn: () => marketingService.getCampaignTemplateUsage(String(id)),
-  });
-  const eventsQuery = useQuery({
-    queryKey: ['marketing-campaign-delivery-events', id],
-    enabled: Boolean(id),
-    queryFn: () => marketingService.getCampaignDeliveryEvents(String(id)),
-  });
+  const {
+    currentLocalCampaign,
+    segments: segmentsState,
+    templateUsage: usageState,
+    deliveryEvents: eventsState,
+  } = useAppSelector(selectMarketing);
+
+  const campaign = currentLocalCampaign.data;
+  const campaignLoading = currentLocalCampaign.loading;
+  const segments = segmentsState.data;
+  const segmentsLoading = segmentsState.loading;
+  const usageQuery = {
+    data: usageState.data,
+    isLoading: usageState.loading,
+    isError: !!usageState.error,
+  };
+  const eventsQuery = {
+    data: eventsState.data,
+    isLoading: eventsState.loading,
+    isError: !!eventsState.error,
+  };
+
+  useEffect(() => {
+    if (id) {
+      dispatch(fetchLocalCampaign(id));
+      dispatch(fetchTemplateUsage(id));
+      dispatch(fetchDeliveryEvents(id));
+    }
+    dispatch(fetchSegments());
+  }, [dispatch, id]);
   
   if (campaignLoading || segmentsLoading) {
     return (

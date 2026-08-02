@@ -37,9 +37,7 @@ interface SkeletonLoaderProps extends BaseLoaderProps {
 export type AppLoaderProps = CircularLoaderProps | LinearLoaderProps | SkeletonLoaderProps;
 
 export function AppLoader(props: AppLoaderProps) {
-  const { type = 'circular' } = props;
-
-  if (type === 'linear') {
+  if (props.type === 'linear') {
     const { value, height = 6, sx, label } = props;
 
     return (
@@ -54,7 +52,7 @@ export function AppLoader(props: AppLoaderProps) {
     );
   }
 
-  if (type === 'skeleton') {
+  if (props.type === 'skeleton') {
     const { rows = 3, rowHeight = 22, showHeader = true, sx } = props;
 
     return (
@@ -67,7 +65,7 @@ export function AppLoader(props: AppLoaderProps) {
     );
   }
 
-  const { size = 28, thickness = 3.6, sx, label } = props;
+  const { size = 28, thickness = 3.6, sx, label } = props as CircularLoaderProps;
 
   return (
     <Stack alignItems="center" spacing={1.2} sx={{ ...sx }}>

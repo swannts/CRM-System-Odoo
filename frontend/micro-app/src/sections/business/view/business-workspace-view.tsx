@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchBusinessRetentionThunk, selectBusiness } from 'src/store/slices/business-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -11,8 +12,6 @@ import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { businessService } from 'src/services/business-service';
-
 import { Iconify } from 'src/components/iconify';
 
 import { BusinessExpired } from '../business-expired';
@@ -24,13 +23,17 @@ import { BusinessProgression } from '../business-progression';
 
 export function BusinessWorkspaceView() {
   const [currentTab, setCurrentTab] = useState('retention');
+  const dispatch = useAppDispatch();
+  const { retention } = useAppSelector(selectBusiness);
 
-  const { data: retention, isLoading } = useQuery({
-    queryKey: ['business-retention'],
-    queryFn: () => businessService.getRetentionStats(),
-  });
+  useEffect(() => {
+    dispatch(fetchBusinessRetentionThunk());
+  }, [dispatch]);
 
-  if (isLoading) {
+  const isLoading = retention.loading;
+  const retentionData = retention.data;
+
+  if (isLoading && !retentionData) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <LinearProgress />
@@ -60,7 +63,7 @@ export function BusinessWorkspaceView() {
         <Tab icon={<Iconify icon="solar:chart-bold-duotone" />} label="Progression" value="progression" />
       </Tabs>
 
-      {currentTab === 'retention' && <BusinessRetention data={retention} />}
+      {currentTab === 'retention' && <BusinessRetention data={retentionData} />}
       {currentTab === 'birthday' && <BusinessBirthday />}
       {currentTab === 'expiring' && <BusinessExpired />}
       {currentTab === 'progression' && <BusinessProgression />}

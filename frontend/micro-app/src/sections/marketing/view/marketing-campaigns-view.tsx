@@ -1,7 +1,6 @@
-'use client';
-
-import Link from 'next/link';
-import { useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchLocalCampaigns, selectMarketing } from 'src/store/slices/marketing-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -17,7 +16,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 
-import { useMarketingCampaigns } from '../hooks/use-marketing';
 import { MarketingCampaignList } from '../components/marketing-campaign-list';
 import { MarketingBackendStatus } from '../components/marketing-backend-status';
 
@@ -27,11 +25,24 @@ const STATUS_OPTIONS = ['all', 'draft', 'scheduled', 'sending', 'sent', 'paused'
 
 // ----------------------------------------------------------------------
 
+import Link from 'next/link';
+
+// ----------------------------------------------------------------------
+
 export function MarketingCampaignsView() {
-  const { data, isLoading, error } = useMarketingCampaigns();
+  const dispatch = useAppDispatch();
+  const { localCampaigns } = useAppSelector(selectMarketing);
+
+  const campaigns = localCampaigns.data;
+  const isLoading = localCampaigns.loading;
+  const error = localCampaigns.error;
+
   const [currentStatus, setCurrentStatus] = useState('all');
 
-  const campaigns = Array.isArray(data) ? data : [];
+  useEffect(() => {
+    dispatch(fetchLocalCampaigns());
+  }, [dispatch]);
+
   const isAvailable = !error && (!isLoading || campaigns.length > 0);
 
   const handleFilterStatus = useCallback(

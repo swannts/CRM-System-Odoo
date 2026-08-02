@@ -1,7 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchEmployeesThunk, 
+  fetchAttendanceThunk, 
+  fetchLeavesThunk, 
+  fetchShiftsThunk, 
+  selectEmployees 
+} from 'src/store/slices/employee-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -25,8 +32,6 @@ import TablePagination from '@mui/material/TablePagination';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { employeeService } from 'src/services/employee-service';
-
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 
@@ -43,46 +48,38 @@ const TABLE_HEAD = [
 // ----------------------------------------------------------------------
 
 export function EmployeeListView() {
+  const dispatch = useAppDispatch();
+  const { employees, attendance, leaves, shifts } = useAppSelector(selectEmployees);
+
   const [viewTab, setViewTab] = useState<'employees' | 'attendance' | 'leave' | 'shifts'>('employees');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [statusTab, setStatusTab] = useState<'all' | 'active' | 'inactive'>('all');
-  
-  const { data: response, isLoading, error } = useQuery({
-    queryKey: ['employees', search, page, rowsPerPage, statusTab],
-    queryFn: () => employeeService.getEmployees({
+
+  useEffect(() => {
+    if (viewTab === 'employees') {
+      dispatch(fetchEmployeesThunk({
         page: page + 1,
         pageSize: rowsPerPage,
         search,
         type: statusTab === 'all' ? undefined : statusTab,
-    }),
-    enabled: viewTab === 'employees',
-  });
+      }));
+    } else if (viewTab === 'attendance') {
+      dispatch(fetchAttendanceThunk({ page: 1, pageSize: 20, search }));
+    } else if (viewTab === 'leave') {
+      dispatch(fetchLeavesThunk({ page: 1, pageSize: 20 }));
+    } else if (viewTab === 'shifts') {
+      dispatch(fetchShiftsThunk({ page: 1, pageSize: 20 }));
+    }
+  }, [dispatch, viewTab, search, page, rowsPerPage, statusTab]);
 
-  const { data: attendanceResponse, isLoading: isAttendanceLoading } = useQuery({
-    queryKey: ['employee-attendance', search],
-    queryFn: () => employeeService.getAttendance({ page: 1, pageSize: 20, search }),
-    enabled: viewTab === 'attendance',
-  });
-
-  const { data: leaveResponse, isLoading: isLeaveLoading } = useQuery({
-    queryKey: ['employee-leaves'],
-    queryFn: () => employeeService.getLeaveRequests({ page: 1, pageSize: 20 }),
-    enabled: viewTab === 'leave',
-  });
-
-  const { data: shiftsResponse, isLoading: isShiftsLoading } = useQuery({
-    queryKey: ['employee-shifts'],
-    queryFn: () => employeeService.getShifts({ page: 1, pageSize: 20 }),
-    enabled: viewTab === 'shifts',
-  });
-
-  const employees = response?.data || [];
-  const total = response?.total || 0;
-  const attendance = attendanceResponse?.data || [];
-  const leaves = leaveResponse?.data || [];
-  const shifts = shiftsResponse?.data || [];
+  const employeesData = employees.data;
+  const total = employees.total;
+  const isLoading = employees.loading;
+  const isAttendanceLoading = attendance.loading;
+  const isLeaveLoading = leaves.loading;
+  const isShiftsLoading = shifts.loading;
 
   return (
     <DashboardContent maxWidth="xl">
@@ -160,7 +157,7 @@ export function EmployeeListView() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {isLoading ? (
+                    {isLoading && !employeesData.length ? (
                       <TableRow>
                         <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
                           <CircularProgress />
@@ -168,7 +165,7 @@ export function EmployeeListView() {
                       </TableRow>
                     ) : (
                       <>
-                        {employees.map((row: any) => (
+                        {employeesData.map((row: any) => (
                           <TableRow key={row._id} hover>
                             <TableCell sx={{ display: 'flex', alignItems: 'center' }}>
                               <Avatar alt={row.fullName} src={row.photo} sx={{ mr: 2 }} />
@@ -190,7 +187,7 @@ export function EmployeeListView() {
                             </TableCell>
                           </TableRow>
                         ))}
-                        {employees.length === 0 && !isLoading && (
+                        {employeesData.length === 0 && !isLoading && (
                           <TableRow>
                             <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
                               <Typography variant="h6">No data found</Typography>
@@ -214,20 +211,20 @@ export function EmployeeListView() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {isAttendanceLoading ? (
+                    {isAttendanceLoading && !attendance.data.length ? (
                       <TableRow>
                         <TableCell colSpan={4} align="center" sx={{ py: 10 }}>
                           <CircularProgress />
                         </TableCell>
                       </TableRow>
-                    ) : attendance.length === 0 ? (
+                    ) : attendance.data.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={4} align="center" sx={{ py: 10 }}>
                           <Typography variant="h6">No attendance records</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      attendance.map((row: any) => (
+                      attendance.data.map((row: any) => (
                         <TableRow key={row.id}>
                           <TableCell>{row.employee_id?.[1] || '-'}</TableCell>
                           <TableCell>{row.check_in || '-'}</TableCell>
@@ -252,20 +249,20 @@ export function EmployeeListView() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {isLeaveLoading ? (
+                    {isLeaveLoading && !leaves.data.length ? (
                       <TableRow>
                         <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
                           <CircularProgress />
                         </TableCell>
                       </TableRow>
-                    ) : leaves.length === 0 ? (
+                    ) : leaves.data.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
                           <Typography variant="h6">No leave requests</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      leaves.map((row: any) => (
+                      leaves.data.map((row: any) => (
                         <TableRow key={row.id}>
                           <TableCell>{row.employee_id?.[1] || '-'}</TableCell>
                           <TableCell>{row.holiday_status_id?.[1] || '-'}</TableCell>
@@ -291,20 +288,20 @@ export function EmployeeListView() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {isShiftsLoading ? (
+                    {isShiftsLoading && !shifts.data.length ? (
                       <TableRow>
                         <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
                           <CircularProgress />
                         </TableCell>
                       </TableRow>
-                    ) : shifts.length === 0 ? (
+                    ) : shifts.data.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} align="center" sx={{ py: 10 }}>
                           <Typography variant="h6">No shifts found</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      shifts.map((row: any) => (
+                      shifts.data.map((row: any) => (
                         <TableRow key={row.id}>
                           <TableCell>{row.employee_id?.[1] || '-'}</TableCell>
                           <TableCell>{row.name || '-'}</TableCell>
@@ -321,7 +318,7 @@ export function EmployeeListView() {
           </Scrollbar>
         </TableContainer>
 
-        {error ? (
+        {employees.error ? (
           <Box sx={{ px: 2, pb: 2 }}>
             <Alert severity="error">Failed to load employees. Please refresh.</Alert>
           </Box>

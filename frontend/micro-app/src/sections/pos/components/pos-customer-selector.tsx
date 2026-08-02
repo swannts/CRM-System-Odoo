@@ -12,7 +12,17 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  selectPos, 
+  searchPosCustomers, 
+  createPosCustomer 
+} from 'src/store/slices/pos-slice';
+
 import { PosErrorState } from './pos-error-state';
+
+// ----------------------------------------------------------------------
 
 type Customer = {
   id: string;
@@ -24,67 +34,47 @@ type Customer = {
 type Props = {
   selectedCustomer: Customer | null;
   onSelectCustomer: (customer: Customer | null) => void;
-  onSearchCustomers: (query: string) => Promise<Customer[]>;
-  onCreateCustomer: (data: { name: string; phone?: string; email?: string }) => Promise<Customer>;
 };
 
 export function PosCustomerSelector({
   selectedCustomer,
   onSelectCustomer,
-  onSearchCustomers,
-  onCreateCustomer,
 }: Props) {
+  const dispatch = useAppDispatch();
+  const { customers } = useAppSelector(selectPos);
+  
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
 
   // Create Customer Dialog State
   const [createOpen, setCreateOpen] = useState(false);
   const [createData, setCreateData] = useState({ name: '', email: '', phone: '' });
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState('');
 
   const handleCreateCustomer = async () => {
     if (!createData.name.trim()) {
-      setCreateError('Name is required.');
       return;
     }
-    setCreateLoading(true);
-    setCreateError('');
+    
     try {
-      const newCustomer = await onCreateCustomer(createData);
+      const newCustomer = await dispatch(createPosCustomer(createData)).unwrap();
       onSelectCustomer(newCustomer);
       setCreateOpen(false);
       setCreateData({ name: '', email: '', phone: '' });
     } catch (err: any) {
-      setCreateError(err.message || 'Failed to create customer');
-    } finally {
-      setCreateLoading(false);
+      console.error('Failed to create customer:', err);
     }
   };
 
   useEffect(() => {
     if (!query) {
-      setResults([]);
       return;
     }
 
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      setError(false);
-      try {
-        const data = await onSearchCustomers(query);
-        setResults(data || []);
-      } catch (err) {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
+    const timer = setTimeout(() => {
+      dispatch(searchPosCustomers(query));
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [query, onSearchCustomers]);
+  }, [query, dispatch]);
 
   if (selectedCustomer) {
     return (
@@ -135,15 +125,15 @@ export function PosCustomerSelector({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      {error && <PosErrorState message="Error searching customers" />}
-      {!error && loading && (
+      {customers.error && <PosErrorState message={customers.error} />}
+      {!customers.error && customers.loading && (
         <Box display="flex" justifyContent="center" p={2}>
           <CircularProgress size={24} />
         </Box>
       )}
-      {!error && !loading && results.length > 0 && (
+      {!customers.error && !customers.loading && customers.data.length > 0 && query && (
         <List sx={{ maxHeight: 200, overflow: 'auto', border: 1, borderColor: 'divider', mt: 1, borderRadius: 1 }}>
-          {results.map((c) => (
+          {customers.data.map((c: Customer) => (
             <ListItem key={c.id} disablePadding>
               <ListItemButton onClick={() => onSelectCustomer(c)}>
                 <ListItemText primary={c.name} secondary={c.phone || c.email} />
@@ -165,7 +155,7 @@ export function PosCustomerSelector({
               required
               value={createData.name}
               onChange={(e) => setCreateData({ ...createData, name: e.target.value })}
-              disabled={createLoading}
+              disabled={customers.createLoading}
             />
             <TextField
               label="Email"
@@ -174,7 +164,7 @@ export function PosCustomerSelector({
               type="email"
               value={createData.email}
               onChange={(e) => setCreateData({ ...createData, email: e.target.value })}
-              disabled={createLoading}
+              disabled={customers.createLoading}
             />
             <TextField
               label="Phone"
@@ -182,15 +172,15 @@ export function PosCustomerSelector({
               size="small"
               value={createData.phone}
               onChange={(e) => setCreateData({ ...createData, phone: e.target.value })}
-              disabled={createLoading}
+              disabled={customers.createLoading}
             />
-            {createError && <Typography color="error" variant="body2">{createError}</Typography>}
+            {customers.createError && <Typography color="error" variant="body2">{customers.createError}</Typography>}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)} disabled={createLoading}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateCustomer} disabled={createLoading}>
-            {createLoading ? <CircularProgress size={24} /> : 'Create'}
+          <Button onClick={() => setCreateOpen(false)} disabled={customers.createLoading}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateCustomer} disabled={customers.createLoading}>
+            {customers.createLoading ? <CircularProgress size={24} /> : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>

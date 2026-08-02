@@ -14,9 +14,20 @@ import { NavItem } from './nav-item';
 import { NavUl, NavLi } from '../styles';
 import { navSectionClasses } from '../classes';
 
+import { NavItemProps } from '../types';
+
 // ----------------------------------------------------------------------
 
-export function NavList({ data, depth, render, cssVars, slotProps, enabledRootRedirect }) {
+type NavListProps = {
+  data: NavItemProps;
+  depth: number;
+  render?: any;
+  cssVars?: any;
+  slotProps?: any;
+  enabledRootRedirect?: boolean;
+};
+
+export function NavList({ data, depth, render, cssVars, slotProps, enabledRootRedirect }: NavListProps) {
   const theme = useTheme();
 
   const pathname = usePathname();
@@ -148,7 +159,16 @@ export function NavList({ data, depth, render, cssVars, slotProps, enabledRootRe
 
 // ----------------------------------------------------------------------
 
-function NavSubList({ data, depth, render, cssVars, slotProps, enabledRootRedirect }) {
+type NavSubListProps = {
+  data: NavItemProps[];
+  depth: number;
+  render?: any;
+  cssVars?: any;
+  slotProps?: any;
+  enabledRootRedirect?: boolean;
+};
+
+function NavSubList({ data, depth, render, cssVars, slotProps, enabledRootRedirect }: NavSubListProps) {
   return (
     <NavUl sx={{ gap: 0.5 }}>
       {data.map((list) => (

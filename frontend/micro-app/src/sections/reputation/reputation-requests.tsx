@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchReputationRequests, sendReviewRequestThunk, selectReputation } from 'src/store/slices/reputation-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -15,28 +17,37 @@ import TableHead from '@mui/material/TableHead';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import TableContainer from '@mui/material/TableContainer';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { fDate } from 'src/utils/format-time';
-
-import { reputationService } from 'src/services/reputation-service';
-
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function ReputationRequests() {
-  const { data: requests } = useQuery({
-    queryKey: ['reputation-requests'],
-    queryFn: () => reputationService.getReviewRequests(),
-  });
+  const dispatch = useAppDispatch();
+  const { requests } = useAppSelector(selectReputation);
+  const [isSending, setIsSending] = useState(false);
 
-  const sendMutation = useMutation({
-    mutationFn: (payload: any) => reputationService.sendReviewRequest(payload),
-    onSuccess: () => {
+  useEffect(() => {
+    dispatch(fetchReputationRequests());
+  }, [dispatch]);
+
+  const handleSendRequest = async () => {
+    try {
+      setIsSending(true);
+      await dispatch(sendReviewRequestThunk({})).unwrap();
       toast.success('Review request sent!');
-    },
-  });
+      dispatch(fetchReputationRequests());
+    } catch (error) {
+      toast.error(error || 'Failed to send request');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const requestsData = requests.data;
 
   return (
     <Grid container spacing={3}>
@@ -61,8 +72,9 @@ export function ReputationRequests() {
               variant="contained"
               fullWidth
               size="large"
-              startIcon={<Iconify icon="solar:send-bold" />}
-              onClick={() => sendMutation.mutate({})}
+              startIcon={isSending ? <CircularProgress size={20} color="inherit" /> : <Iconify icon="solar:send-bold" />}
+              disabled={isSending}
+              onClick={handleSendRequest}
             >
               Send Request
             </Button>
@@ -84,7 +96,7 @@ export function ReputationRequests() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(requests || []).map((row: any) => (
+                {requestsData.map((row: any) => (
                   <TableRow key={row.id}>
                     <TableCell>
                       <Typography variant="subtitle2">{row.customerName}</Typography>
@@ -112,12 +124,19 @@ export function ReputationRequests() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {(requests || []).length === 0 && (
+                {requestsData.length === 0 && !requests.loading && (
                   <TableRow>
                     <TableCell colSpan={4} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
                       No requests sent yet.
                     </TableCell>
                   </TableRow>
+                )}
+                {requests.loading && requestsData.length === 0 && (
+                   <TableRow>
+                     <TableCell colSpan={4} sx={{ textAlign: 'center', py: 3 }}>
+                       <CircularProgress size={32} />
+                     </TableCell>
+                   </TableRow>
                 )}
               </TableBody>
             </Table>

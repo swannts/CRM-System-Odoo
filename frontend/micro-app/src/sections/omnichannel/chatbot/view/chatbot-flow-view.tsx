@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOmniChatbotByIdThunk, 
+  updateOmniChatbotThunk, 
+  selectOmni 
+} from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -13,14 +18,13 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import LoadingButton from '@mui/lab/LoadingButton';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { useParams, useRouter } from 'src/routes/hooks';
-
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniAutomationService } from 'src/services/omni-service';
 
 import { Iconify } from 'src/components/iconify';
-import { showToast } from 'src/components/toast';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
@@ -28,15 +32,21 @@ export function ChatbotFlowView() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const { currentChatbot } = useAppSelector(selectOmni);
 
   const [nodes, setNodes] = useState<any[]>([]);
   const [edges, setEdges] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  const { data: chatbot, isLoading } = useQuery({
-    queryKey: ['omni-chatbot', id],
-    queryFn: () => omniAutomationService.getChatbotById(id),
-  });
+  useEffect(() => {
+    if (id) {
+      dispatch(fetchOmniChatbotByIdThunk(id));
+    }
+  }, [dispatch, id]);
+
+  const chatbot = currentChatbot.data;
+  const isLoading = currentChatbot.loading;
 
   useEffect(() => {
     if (chatbot?.flowData) {
@@ -66,18 +76,26 @@ export function ChatbotFlowView() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await omniAutomationService.updateChatbot(id, {
-        flowData: { nodes, edges }
-      });
-      showToast({ message: 'Flow saved successfully!', severity: 'success' });
+      await dispatch(updateOmniChatbotThunk({
+        id,
+        data: { flowData: { nodes, edges } }
+      })).unwrap();
+      toast.success('Flow saved successfully!');
+      dispatch(fetchOmniChatbotByIdThunk(id));
     } catch (error) {
-      console.error(error);
+      toast.error(error || 'Failed to save flow');
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) return <Typography>Loading...</Typography>;
+  if (isLoading && !chatbot) {
+    return (
+      <Box sx={{ p: 5, textAlign: 'center' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <DashboardContent maxWidth="lg">

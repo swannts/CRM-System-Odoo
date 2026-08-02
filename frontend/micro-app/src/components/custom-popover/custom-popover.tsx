@@ -27,8 +27,8 @@ export function CustomPopover({ open, onClose, children, anchorEl, slotProps, ..
       open={!!open}
       anchorEl={anchorEl}
       onClose={onClose}
-      anchorOrigin={anchorOrigin}
-      transformOrigin={transformOrigin}
+      anchorOrigin={anchorOrigin as any}
+      transformOrigin={transformOrigin as any}
       slotProps={{
         ...slotProps,
         paper: {

@@ -1,8 +1,16 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchScoreRules, 
+  createScoreRuleThunk, 
+  updateScoreRuleThunk,
+  fetchHotLeads,
+  selectScoring 
+} from 'src/store/slices/scoring-slice';
 
 import type { SalesLeadRow, SalesSummary, SalesOrderRow } from 'src/services/sales-dashboard-service';
-import { scoringService } from 'src/services/scoring-service';
 
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
@@ -13,6 +21,7 @@ import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { SalesEmptyState } from './sales-empty-state';
 import { formatOptionalNumber, formatOptionalCurrency } from '../utils';
@@ -26,21 +35,25 @@ export function SalesAnalyticsPanel({
   orders: SalesOrderRow[];
   leads: SalesLeadRow[];
 }) {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const scoringState = useAppSelector(selectScoring);
+
   const [draftName, setDraftName] = useState('Recent Sales Activity');
   const [draftWeight, setDraftWeight] = useState(10);
   const [draftScope, setDraftScope] = useState<'contact' | 'lead' | 'both'>('lead');
   const [draftDays, setDraftDays] = useState(14);
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
-  const { data: scoreRules = [] } = useQuery({
-    queryKey: ['score-rules'],
-    queryFn: () => scoringService.getScoreRules(),
-    staleTime: 30 * 1000,
-  });
+  const { data: scoreRules, loading: rulesLoading } = scoringState.rules;
 
-  const createRuleMutation = useMutation({
-    mutationFn: () =>
-      scoringService.createScoreRule({
+  useEffect(() => {
+    dispatch(fetchScoreRules());
+  }, [dispatch]);
+
+  const handleAddRule = async () => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(createScoreRuleThunk({
         name: draftName,
         weight: draftWeight,
         scope: draftScope,
@@ -50,20 +63,28 @@ export function SalesAnalyticsPanel({
           operator: 'lte',
           value: draftDays,
         },
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['score-rules'] });
-      queryClient.invalidateQueries({ queryKey: ['hot-lead-scores'] });
-    },
-  });
+      })).unwrap();
+      dispatch(fetchScoreRules());
+      dispatch(fetchHotLeads());
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
-  const toggleRuleMutation = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) => scoringService.updateScoreRule(id, { active }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['score-rules'] });
-      queryClient.invalidateQueries({ queryKey: ['hot-lead-scores'] });
-    },
-  });
+  const handleToggleRule = async (id: string, active: boolean) => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(updateScoreRuleThunk({ id, data: { active } })).unwrap();
+      dispatch(fetchScoreRules());
+      dispatch(fetchHotLeads());
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
   if (!summary && !orders.length && !leads.length) {
     return <SalesEmptyState title="Not enough data" description="Not enough data to show analytics yet." />;
@@ -120,19 +141,25 @@ export function SalesAnalyticsPanel({
                 <MenuItem value="both">Both</MenuItem>
               </TextField>
               <TextField label="Recency Days" type="number" value={draftDays} onChange={(e) => setDraftDays(Number(e.target.value || 0))} size="small" />
-              <Button variant="contained" onClick={() => createRuleMutation.mutate()} disabled={createRuleMutation.isPending}>Add Rule</Button>
+              <Button variant="contained" onClick={handleAddRule} disabled={isMutationPending}>
+                {isMutationPending ? <CircularProgress size={24} /> : 'Add Rule'}
+              </Button>
             </Stack>
 
             <Stack spacing={1}>
-              {scoreRules.map((rule: any) => (
-                <Stack key={rule.id} direction="row" alignItems="center" justifyContent="space-between" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
-                  <Typography variant="body2">{rule.name} ({rule.category}) • weight {rule.weight}</Typography>
-                  <FormControlLabel
-                    control={<Switch checked={Boolean(rule.active)} onChange={(e) => toggleRuleMutation.mutate({ id: rule.id, active: e.target.checked })} />}
-                    label={rule.active ? 'Active' : 'Disabled'}
-                  />
-                </Stack>
-              ))}
+              {rulesLoading ? (
+                <CircularProgress sx={{ mx: 'auto', my: 2 }} />
+              ) : (
+                scoreRules.map((rule: any) => (
+                  <Stack key={rule.id} direction="row" alignItems="center" justifyContent="space-between" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
+                    <Typography variant="body2">{rule.name} ({rule.category}) • weight {rule.weight}</Typography>
+                    <FormControlLabel
+                      control={<Switch checked={Boolean(rule.active)} onChange={(e) => handleToggleRule(rule.id, e.target.checked)} disabled={isMutationPending} />}
+                      label={rule.active ? 'Active' : 'Disabled'}
+                    />
+                  </Stack>
+                ))
+              )}
             </Stack>
           </Stack>
         </Card>

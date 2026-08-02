@@ -28,6 +28,30 @@ const StyledElevation = styled('span')(({ theme }) => ({
 
 // ----------------------------------------------------------------------
 
+import type { AppBarProps } from '@mui/material/AppBar';
+import type { ToolbarProps } from '@mui/material/Toolbar';
+import type { ContainerProps } from '@mui/material/Container';
+import type { SxProps, Theme } from '@mui/material/styles';
+
+// ----------------------------------------------------------------------
+
+type Props = AppBarProps & {
+  layoutQuery?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  disableOffset?: boolean;
+  disableElevation?: boolean;
+  slots?: {
+    topArea?: React.ReactNode;
+    bottomArea?: React.ReactNode;
+    leftArea?: React.ReactNode;
+    centerArea?: React.ReactNode;
+    rightArea?: React.ReactNode;
+  };
+  slotProps?: {
+    toolbar?: ToolbarProps;
+    container?: ContainerProps;
+  };
+};
+
 export function HeaderSection({
   sx,
   slots,
@@ -36,7 +60,7 @@ export function HeaderSection({
   disableElevation,
   layoutQuery = 'md',
   ...other
-}) {
+}: Props) {
   const theme = useTheme();
 
   const { offsetTop } = useScrollOffSetTop();

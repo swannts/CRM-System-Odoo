@@ -1,6 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchBuilderWebsitesThunk, 
+  fetchBuilderFormsThunk, 
+  selectBuilder 
+} from 'src/store/slices/builder-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -13,8 +19,6 @@ import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { builderService } from 'src/services/builder-service';
-
 import { Iconify } from 'src/components/iconify';
 import { LoaderBlock } from 'src/components/loading';
 
@@ -22,24 +26,25 @@ import { LoaderBlock } from 'src/components/loading';
 
 export function BuildersOverviewView() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const { websites, forms } = useAppSelector(selectBuilder);
 
-  const { data: websites, isLoading: websitesLoading } = useQuery({
-    queryKey: ['builder-websites'],
-    queryFn: () => builderService.getWebsites(),
-  });
+  useEffect(() => {
+    dispatch(fetchBuilderWebsitesThunk());
+    dispatch(fetchBuilderFormsThunk());
+  }, [dispatch]);
 
-  const { data: forms, isLoading: formsLoading } = useQuery({
-    queryKey: ['builder-forms'],
-    queryFn: () => builderService.getForms(),
-  });
+  const websitesData = websites.data || [];
+  const formsData = forms.data || [];
+  const isLoading = websites.loading || forms.loading;
 
-  if (websitesLoading || formsLoading) {
+  if (isLoading && !websitesData.length && !formsData.length) {
     return <LoaderBlock loader={{ type: 'circular', label: 'Loading builder data...' }} minHeight={220} />;
   }
 
   const creativeTools = [
-    { title: 'Web Builder', icon: 'solar:global-bold-duotone', count: websites?.length || 0, color: 'primary', path: paths.dashboard.webBuilderCreate },
-    { title: 'Form Funnels', icon: 'solar:document-text-bold-duotone', count: forms?.length || 0, color: 'info', path: paths.dashboard.formBuilder },
+    { title: 'Web Builder', icon: 'solar:global-bold-duotone', count: websitesData.length || 0, color: 'primary', path: paths.dashboard.webBuilderCreate },
+    { title: 'Form Funnels', icon: 'solar:document-text-bold-duotone', count: formsData.length || 0, color: 'info', path: paths.dashboard.formBuilder },
     { title: 'Email Designer', icon: 'solar:letter-bold-duotone', count: '12 Templates', color: 'warning', path: paths.dashboard.emailEditor },
     { title: 'Workflows', icon: 'solar:magic-stick-3-bold-duotone', count: '8 Active', color: 'success', path: paths.dashboard.workflow },
   ];
@@ -99,7 +104,7 @@ export function BuildersOverviewView() {
                   <Button size="small">View All</Button>
                </Stack>
                <Stack spacing={2}>
-                  {(websites || []).slice(0, 5).map((site: any) => (
+                  {websitesData.slice(0, 5).map((site: any) => (
                      <Box key={site.id} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.neutral', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Stack direction="row" spacing={2} alignItems="center">
                            <Box sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: 'primary.lighter', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -113,6 +118,11 @@ export function BuildersOverviewView() {
                         <Button size="small" variant="soft">Edit</Button>
                      </Box>
                   ))}
+                  {websitesData.length === 0 && !isLoading && (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                      No recent projects found.
+                    </Typography>
+                  )}
                </Stack>
             </Card>
          </Grid>

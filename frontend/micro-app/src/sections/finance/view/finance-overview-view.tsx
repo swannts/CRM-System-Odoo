@@ -1,6 +1,9 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchFinanceStats, selectFinance } from 'src/store/slices/finance-slice';
+import { fetchBillingInvoices, selectBilling } from 'src/store/slices/billing-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -14,23 +17,26 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { fCurrency } from 'src/utils/format-number';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { financeService } from 'src/services/finance-service';
-import { billingService } from 'src/services/billing-service';
 
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function FinanceOverviewView() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['finance-summary'],
-    queryFn: () => financeService.getRevenueStats(),
-  });
+  const dispatch = useAppDispatch();
+  const financeState = useAppSelector(selectFinance);
+  const billingState = useAppSelector(selectBilling);
 
-  const { data: invoices, isLoading: invoicesLoading } = useQuery({
-    queryKey: ['invoice-list'],
-    queryFn: () => billingService.getInvoices(),
-  });
+  useEffect(() => {
+    dispatch(fetchFinanceStats());
+    dispatch(fetchBillingInvoices({ page: 1, pageSize: 20 }));
+  }, [dispatch]);
+
+  const stats = financeState.stats.data;
+  const statsLoading = financeState.stats.loading;
+
+  const invoices = { data: billingState.invoices.data };
+  const invoicesLoading = billingState.invoices.loading;
 
   if (statsLoading || invoicesLoading) {
     return (

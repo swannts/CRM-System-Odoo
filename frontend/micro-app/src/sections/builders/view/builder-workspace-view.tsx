@@ -1,9 +1,23 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchBuilderFormsThunk, 
+  fetchBuilderFormTemplatesThunk, 
+  fetchBuilderFormPreviewThunk,
+  fetchBuilderWebsitesThunk,
+  fetchBuilderWebsiteThunk,
+  fetchBuilderWebsitePreviewThunk,
+  fetchBuilderEmailCampaignsThunk,
+  fetchBuilderWorkflowWorkspacesThunk,
+  fetchBuilderReputationStatsThunk,
+  createBuilderFormThunk,
+  createBuilderWebsiteThunk,
+  selectBuilder 
+} from 'src/store/slices/builder-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -19,10 +33,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
 import { m } from 'framer-motion';
-import { alpha, useTheme } from '@mui/material/styles';
-
-import { builderService } from 'src/services/builder-service';
-import { marketingService } from 'src/services/marketing-service';
+import { alpha } from '@mui/material/styles';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
@@ -60,7 +72,9 @@ export function BuilderWorkspaceView({
   websiteId,
   pageSlug,
 }: Props) {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const builderState = useAppSelector(selectBuilder);
+  
   const formMethods = useForm({
     defaultValues: {
       title: '',
@@ -77,86 +91,71 @@ export function BuilderWorkspaceView({
     },
   });
 
-  const formsQuery = useQuery({
-    queryKey: ['builder-forms'],
-    queryFn: () => builderService.getForms(),
-    enabled: ['form-list', 'form-create', 'form-setting'].includes(mode),
-  });
+  useEffect(() => {
+    if (['form-list', 'form-create', 'form-setting'].includes(mode)) {
+      dispatch(fetchBuilderFormsThunk());
+    }
+    if (['form-list', 'form-create'].includes(mode)) {
+      dispatch(fetchBuilderFormTemplatesThunk());
+    }
+    if (['form-setting', 'form-preview'].includes(mode) && id) {
+      dispatch(fetchBuilderFormPreviewThunk(id));
+    }
+    if (['webbuilder-create', 'webbuilder-editor'].includes(mode)) {
+      dispatch(fetchBuilderWebsitesThunk());
+    }
+    if (mode === 'webbuilder-editor' && id) {
+      dispatch(fetchBuilderWebsiteThunk(id));
+    }
+    if (mode === 'webbuilder-preview' && websiteId) {
+      dispatch(fetchBuilderWebsitePreviewThunk({ websiteId, pageSlug }));
+    }
+    if (mode === 'email-editor') {
+      dispatch(fetchBuilderEmailCampaignsThunk());
+    }
+    if (mode === 'workflow') {
+      dispatch(fetchBuilderWorkflowWorkspacesThunk());
+    }
+    if (['social-proof', 'reputation'].includes(mode)) {
+      dispatch(fetchBuilderReputationStatsThunk());
+    }
+  }, [dispatch, mode, id, websiteId, pageSlug]);
 
-  const templatesQuery = useQuery({
-    queryKey: ['builder-form-templates'],
-    queryFn: () => builderService.getFormTemplates(),
-    enabled: ['form-list', 'form-create'].includes(mode),
-  });
-
-  const formPreviewQuery = useQuery({
-    queryKey: ['builder-form-preview', id],
-    queryFn: () => builderService.getFormPreview(id!),
-    enabled: ['form-setting', 'form-preview'].includes(mode) && Boolean(id),
-  });
-
-  const websitesQuery = useQuery({
-    queryKey: ['builder-websites'],
-    queryFn: () => builderService.getWebsites(),
-    enabled: ['webbuilder-create', 'webbuilder-editor'].includes(mode),
-  });
-
-  const websiteQuery = useQuery({
-    queryKey: ['builder-website', id],
-    queryFn: () => builderService.getWebsite(id!),
-    enabled: mode === 'webbuilder-editor' && Boolean(id),
-  });
-
-  const websitePreviewQuery = useQuery({
-    queryKey: ['builder-website-preview', websiteId, pageSlug],
-    queryFn: () => builderService.getWebsitePreviewData(websiteId!, pageSlug),
-    enabled: mode === 'webbuilder-preview' && Boolean(websiteId),
-  });
-
-  const emailCampaignsQuery = useQuery({
-    queryKey: ['builder-email-campaigns'],
-    queryFn: () => marketingService.getCampaigns(),
-    enabled: mode === 'email-editor',
-  });
-
-  const workflowWorkspacesQuery = useQuery({
-    queryKey: ['builder-workflow-workspaces'],
-    queryFn: () => marketingService.getWorkflowWorkspaces(),
-    enabled: mode === 'workflow',
-  });
-
-  const reputationQuery = useQuery({
-    queryKey: ['builder-reputation-stats'],
-    queryFn: () => builderService.getReputationDashboardStats(),
-    enabled: ['social-proof', 'reputation'].includes(mode),
-  });
-
-  const createFormMutation = useMutation({
-    mutationFn: (values: any) => builderService.createForm(values),
-    onSuccess: async () => {
+  const handleCreateForm = async (values: any) => {
+    try {
+      await dispatch(createBuilderFormThunk(values)).unwrap();
       formMethods.reset();
-      await queryClient.invalidateQueries({ queryKey: ['builder-forms'] });
-    },
-  });
+      dispatch(fetchBuilderFormsThunk());
+      toast.success('Form created');
+    } catch (err) {
+      toast.error(err || 'Failed to create form');
+    }
+  };
 
-  const createWebsiteMutation = useMutation({
-    mutationFn: (values: any) => builderService.createWebsite(values),
-    onSuccess: async () => {
+  const handleCreateWebsite = async (values: any) => {
+    try {
+      await dispatch(createBuilderWebsiteThunk(values)).unwrap();
       websiteMethods.reset();
-      await queryClient.invalidateQueries({ queryKey: ['builder-websites'] });
-    },
-  });
+      dispatch(fetchBuilderWebsitesThunk());
+      toast.success('Website created');
+    } catch (err) {
+      toast.error(err || 'Failed to create website');
+    }
+  };
 
-  const isLoading =
-    formsQuery.isLoading ||
-    templatesQuery.isLoading ||
-    formPreviewQuery.isLoading ||
-    websitesQuery.isLoading ||
-    websiteQuery.isLoading ||
-    websitePreviewQuery.isLoading ||
-    emailCampaignsQuery.isLoading ||
-    workflowWorkspacesQuery.isLoading ||
-    reputationQuery.isLoading;
+  const isLoading = useMemo(() => {
+    if (mode === 'form-list') return builderState.forms.loading || builderState.formTemplates.loading;
+    if (mode === 'form-create') return builderState.formTemplates.loading;
+    if (mode === 'form-setting') return builderState.formPreview.loading;
+    if (mode === 'form-preview') return builderState.formPreview.loading;
+    if (mode === 'webbuilder-create') return builderState.websites.loading;
+    if (mode === 'webbuilder-editor') return builderState.currentWebsite.loading;
+    if (mode === 'webbuilder-preview') return builderState.websitePreview.loading;
+    if (mode === 'email-editor') return builderState.emailCampaigns.loading;
+    if (mode === 'workflow') return builderState.workflowWorkspaces.loading;
+    if (mode === 'social-proof' || mode === 'reputation') return builderState.reputationStats.loading;
+    return false;
+  }, [mode, builderState]);
 
   const relatedLinks = useMemo(
     () => [
@@ -169,7 +168,7 @@ export function BuilderWorkspaceView({
     []
   );
 
-  if (isLoading) {
+  if (isLoading && !builderState.forms.data.length && !builderState.websites.data.length) {
     return (
       <Box sx={{ py: 10, textAlign: 'center' }}>
         <CircularProgress />
@@ -274,7 +273,7 @@ export function BuilderWorkspaceView({
                 <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
                   Funnels
                 </Typography>
-                <Typography variant="h3">{formsQuery.data?.length || 0}</Typography>
+                <Typography variant="h3">{builderState.forms.data.length}</Typography>
               </Card>
             </Grid>
             <Grid item xs={12} md={4}>
@@ -292,7 +291,7 @@ export function BuilderWorkspaceView({
                 <Typography variant="h6" sx={{ mb: 2, color: 'info.main' }}>
                   Templates
                 </Typography>
-                <Typography variant="h3">{templatesQuery.data?.length || 0}</Typography>
+                <Typography variant="h3">{builderState.formTemplates.data.length}</Typography>
               </Card>
             </Grid>
             <Grid item xs={12} md={4}>
@@ -322,7 +321,7 @@ export function BuilderWorkspaceView({
                   Existing Forms
                 </Typography>
                 <Stack spacing={1.5}>
-                  {(formsQuery.data || []).slice(0, 8).map((form: any, index: number) => (
+                  {(builderState.forms.data || []).slice(0, 8).map((form: any, index: number) => (
                     <Box key={form._id || form.id || index} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.neutral' }}>
                       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
                         <Box>
@@ -369,14 +368,14 @@ export function BuilderWorkspaceView({
                 <Stack
                   component="form"
                   spacing={2}
-                  onSubmit={formMethods.handleSubmit((values) => createFormMutation.mutate(values))}
+                  onSubmit={formMethods.handleSubmit(handleCreateForm)}
                 >
                   <TextField label="Title" {...formMethods.register('title')} />
                   <TextField label="Internal Name" {...formMethods.register('name')} />
-                  <TextField label="Type" defaultValue={type || 'form'} {...formMethods.register('type')} />
-                  <TextField label="Template" defaultValue={template || ''} {...formMethods.register('template')} />
+                  <TextField label="Type" {...formMethods.register('type')} />
+                  <TextField label="Template" {...formMethods.register('template')} />
                   <TextField label="Category" {...formMethods.register('formCategory')} />
-                  <Button type="submit" variant="contained" disabled={createFormMutation.isPending}>
+                  <Button type="submit" variant="contained">
                     Create Form
                   </Button>
                 </Stack>
@@ -395,7 +394,7 @@ export function BuilderWorkspaceView({
                   Available templates
                 </Typography>
                 <Stack spacing={1}>
-                  {(templatesQuery.data || []).slice(0, 6).map((item: any, index: number) => (
+                  {(builderState.formTemplates.data || []).slice(0, 6).map((item: any, index: number) => (
                     <Typography key={item._id || item.id || index} variant="body2" sx={{ color: 'text.secondary' }}>
                       {item.title || item.name || `Template ${index + 1}`}
                     </Typography>
@@ -409,7 +408,7 @@ export function BuilderWorkspaceView({
         {mode === 'form-setting' && (
           <Card sx={{ p: 3 }}>
             <Stack spacing={2}>
-              <Typography variant="h6">{formPreviewQuery.data?.title || formPreviewQuery.data?.name || id}</Typography>
+              <Typography variant="h6">{builderState.formPreview.data?.title || builderState.formPreview.data?.name || id}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 Form settings and edit-route surface now resolve in the new app. Deep drag-and-drop editor parity still needs a dedicated builder implementation pass.
               </Typography>
@@ -423,7 +422,7 @@ export function BuilderWorkspaceView({
         {mode === 'form-preview' && (
           <Card sx={{ p: 3 }}>
             <Stack spacing={2}>
-              <Typography variant="h6">{formPreviewQuery.data?.title || formPreviewQuery.data?.name || id}</Typography>
+              <Typography variant="h6">{builderState.formPreview.data?.title || builderState.formPreview.data?.name || id}</Typography>
               <Typography variant="body2">path: {previewPath || 'default'}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 Public form preview route is available in the micro-app. Rendering is currently compatibility-backed from the legacy form definition.
@@ -451,7 +450,7 @@ export function BuilderWorkspaceView({
                 <Typography variant="h6" sx={{ mb: 2 }}>
                   Email Campaigns
                 </Typography>
-                <Typography variant="h3">{emailCampaignsQuery.data?.length || 0}</Typography>
+                <Typography variant="h3">{builderState.emailCampaigns.data.length}</Typography>
               </Card>
             </Grid>
             <Grid item xs={12} md={8}>
@@ -480,11 +479,11 @@ export function BuilderWorkspaceView({
                 <Stack
                   component="form"
                   spacing={2}
-                  onSubmit={websiteMethods.handleSubmit((values) => createWebsiteMutation.mutate(values))}
+                  onSubmit={websiteMethods.handleSubmit(handleCreateWebsite)}
                 >
                   <TextField label="Website Name" {...websiteMethods.register('name')} />
-                  <TextField label="Website Type" defaultValue={type || 'business'} {...websiteMethods.register('type')} />
-                  <Button type="submit" variant="contained" disabled={createWebsiteMutation.isPending}>
+                  <TextField label="Website Type" {...websiteMethods.register('type')} />
+                  <Button type="submit" variant="contained">
                     Create Website
                   </Button>
                 </Stack>
@@ -496,7 +495,7 @@ export function BuilderWorkspaceView({
                   Existing Websites
                 </Typography>
                 <Stack spacing={1.5}>
-                  {(websitesQuery.data || []).slice(0, 6).map((site: any, index: number) => (
+                  {(builderState.websites.data || []).slice(0, 6).map((site: any, index: number) => (
                     <Box key={site._id || site.id || index} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.neutral' }}>
                       <Typography variant="subtitle2">{site.name || site.title || `Website ${index + 1}`}</Typography>
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -513,7 +512,7 @@ export function BuilderWorkspaceView({
         {mode === 'webbuilder-editor' && (
           <Card sx={{ p: 3 }}>
             <Stack spacing={2}>
-              <Typography variant="h6">{websiteQuery.data?.name || websiteQuery.data?.title || id}</Typography>
+              <Typography variant="h6">{builderState.currentWebsite.data?.name || builderState.currentWebsite.data?.title || id}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 Website editor route now resolves in the micro-app and loads current website metadata from the compatibility API.
               </Typography>
@@ -534,7 +533,7 @@ export function BuilderWorkspaceView({
                 Public webbuilder preview route is present and loads preview data through the compatibility API.
               </Typography>
               <Typography variant="body2">
-                Preview title: {websitePreviewQuery.data?.title || websitePreviewQuery.data?.name || 'Preview available'}
+                Preview title: {builderState.websitePreview.data?.title || builderState.websitePreview.data?.name || 'Preview available'}
               </Typography>
             </Stack>
           </Card>
@@ -544,7 +543,7 @@ export function BuilderWorkspaceView({
           <Card sx={{ p: 3 }}>
             <Stack spacing={2}>
               <Typography variant="h6">Workflow Workspaces</Typography>
-              <Typography variant="h3">{workflowWorkspacesQuery.data?.length || 0}</Typography>
+              <Typography variant="h3">{builderState.workflowWorkspaces.data.length}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 The top-level workflow route now resolves alongside the deeper workflow builder routes that were already added earlier.
               </Typography>
@@ -560,7 +559,7 @@ export function BuilderWorkspaceView({
                 Legacy social-proof route now resolves in the new app. It currently shares reputation performance data until a dedicated social-proof microservice/frontend slice is built.
               </Typography>
               <Typography variant="body2">
-                Reviews tracked: {reputationQuery.data?.reviewsCount || reputationQuery.data?.totalReviews || 'n/a'}
+                Reviews tracked: {builderState.reputationStats.data?.reviewsCount || builderState.reputationStats.data?.totalReviews || 'n/a'}
               </Typography>
             </Stack>
           </Card>
@@ -585,7 +584,7 @@ export function BuilderWorkspaceView({
                   Total Reviews
                 </Typography>
                 <Typography variant="h3">
-                  {reputationQuery.data?.totalReviews || reputationQuery.data?.reviewsCount || 0}
+                  {builderState.reputationStats.data?.totalReviews || builderState.reputationStats.data?.reviewsCount || 0}
                 </Typography>
               </Card>
             </Grid>
@@ -595,7 +594,7 @@ export function BuilderWorkspaceView({
                   Average Rating
                 </Typography>
                 <Typography variant="h3">
-                  {reputationQuery.data?.averageRating || reputationQuery.data?.avgRating || '0.0'}
+                  {builderState.reputationStats.data?.averageRating || builderState.reputationStats.data?.avgRating || '0.0'}
                 </Typography>
               </Card>
             </Grid>
@@ -605,7 +604,7 @@ export function BuilderWorkspaceView({
                   Unreplied
                 </Typography>
                 <Typography variant="h3">
-                  {reputationQuery.data?.unrepliedCount || reputationQuery.data?.pendingReplies || 0}
+                  {builderState.reputationStats.data?.unrepliedCount || builderState.reputationStats.data?.pendingReplies || 0}
                 </Typography>
               </Card>
             </Grid>

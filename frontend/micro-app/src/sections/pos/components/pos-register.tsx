@@ -10,9 +10,23 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { posService } from '../services/pos-service';
 
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  selectPos, 
+  fetchPosContext, 
+  fetchPosProducts, 
+  fetchPosOrders, 
+  initializeCart, 
+  addProductToCart, 
+  updateCartQuantity, 
+  removeProductFromCart, 
+  processCheckout, 
+  refundPosOrder,
+  clearCheckoutState
+} from 'src/store/slices/pos-slice';
+
+import { posService } from '../services/pos-service';
 import { PosProductGrid } from './pos-product-grid';
 import { PosCart } from './pos-cart';
 import { PosCustomerSelector } from './pos-customer-selector';
@@ -23,13 +37,9 @@ import { PosReceiptDialog } from './pos-receipt-dialog';
 import { PosRefundDialog } from './pos-refund-dialog';
 import { showToast } from 'src/components/toast';
 
-type CartItem = {
-  id: string;
-  productId: string;
-  name: string;
-  price: number;
-  qty: number;
-};
+import { CartItem } from '../types';
+
+// ----------------------------------------------------------------------
 
 function hasNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -59,45 +69,26 @@ function normalizePaymentMethods(methods: unknown): Array<{ value: string; label
     .filter((method): method is { value: string; label: string } => method !== null);
 }
 
-function mapCartLine(line: any): CartItem | null {
-  const lineId = line?.id || line?.lineId;
-  const productId = line?.productId || line?.product?.id || line?.sku;
-  const name = line?.name || line?.product?.name;
-  const price = toValidNumber(line?.price ?? line?.unitPrice ?? line?.product?.price);
-  const qty = toValidNumber(line?.qty ?? line?.quantity);
+type Props = {
+  mode?: string;
+  shopId?: string;
+  deliveryId?: string;
+  orderId?: string;
+  [key: string]: any;
+};
 
-  if (!lineId || !productId || !name || price === null || qty === null) {
-    return null;
-  }
+export function PosRegister({ mode, shopId, deliveryId, orderId, ...other }: Props) {
+  const dispatch = useAppDispatch();
+  const { 
+    context, 
+    products: productsState, 
+    orders: ordersState, 
+    cart: cartState, 
+    checkout: checkoutState 
+  } = useAppSelector(selectPos);
 
-  return {
-    id: String(lineId),
-    productId: String(productId),
-    name: String(name),
-    price,
-    qty,
-  };
-}
-
-function extractCartItems(payload: any): CartItem[] | null {
-  const lines = payload?.items || payload?.cart?.items || payload?.lines || payload?.cartLines;
-  if (!Array.isArray(lines)) {
-    return null;
-  }
-  const mapped = lines
-    .map((line: any) => mapCartLine(line))
-    .filter((line: CartItem | null): line is CartItem => line !== null);
-  return mapped;
-}
-
-export function PosRegister() {
-  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('register');
-  const [cartId, setCartId] = useState<string | null>(null);
-  const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
-  const [isInitializingCart, setIsInitializingCart] = useState(false);
-  const [cartInitError, setCartInitError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
 
@@ -109,126 +100,20 @@ export function PosRegister() {
   const [receiptData, setReceiptData] = useState<any>(null);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
 
+  // Initial data loading
   useEffect(() => {
-    async function initCart() {
-      setIsInitializingCart(true);
-      setCartInitError(null);
-      try {
-        const res = await posService.createCart();
-        if (!res?.id) {
-          throw new Error('Cart initialization returned no cart id.');
-        }
-        setCartId(String(res.id));
-      } catch (error: any) {
-        setCartId(null);
-        setCart([]);
-        setCartInitError(error?.message || 'Cart sync failed');
-      } finally {
-        setIsInitializingCart(false);
-      }
-    }
-    initCart();
-  }, []);
+    dispatch(fetchPosContext());
+    dispatch(fetchPosOrders());
+    dispatch(initializeCart());
+  }, [dispatch]);
 
-  const {
-    data: context,
-    isLoading: isLoadingContext,
-    isError: isErrorContext,
-    refetch: refetchContext,
-  } = useQuery({
-    queryKey: ['pos-context'],
-    queryFn: () => posService.getContext(),
-  });
-
-  const {
-    data: products,
-    isLoading: isLoadingProducts,
-    isError: isErrorProducts,
-    refetch: refetchProducts,
-  } = useQuery({
-    queryKey: ['pos-products', searchQuery],
-    queryFn: () => posService.getProducts(searchQuery || undefined),
-  });
-
-  const { data: orders, isLoading: isLoadingOrders, isError: isErrorOrders, refetch: refetchOrders } = useQuery({
-    queryKey: ['pos-orders'],
-    queryFn: () => posService.getOrders(),
-  });
-
-  const addToCartMutation = useMutation({
-    mutationFn: ({ activeCartId, data }: { activeCartId: string; data: any }) => posService.addToCart(activeCartId, data),
-    onError: (error: any) => {
-      showToast(error?.message || 'Cart sync failed', 'error');
-    },
-  });
-
-  const updateCartItemMutation = useMutation({
-    mutationFn: ({ activeCartId, lineId, data }: { activeCartId: string; lineId: string; data: any }) =>
-      posService.updateCartItem(activeCartId, lineId, data),
-    onError: (error: any) => {
-      showToast(error?.message || 'Cart sync failed', 'error');
-    },
-  });
-
-  const removeCartItemMutation = useMutation({
-    mutationFn: ({ activeCartId, lineId }: { activeCartId: string; lineId: string }) =>
-      posService.removeCartItem(activeCartId, lineId),
-    onError: (error: any) => {
-      showToast(error?.message || 'Cart sync failed', 'error');
-    },
-  });
-
-  const checkoutMutation = useMutation({
-    mutationFn: (data: any) => posService.checkout(data),
-    onSuccess: async (res) => {
-      showToast('Order successful!', 'success');
-      setCart([]);
-      setSelectedCustomer(null);
-
-      try {
-        const newCart = await posService.createCart();
-        if (!newCart?.id) {
-          throw new Error('Could not initialize a new cart after checkout.');
-        }
-        setCartId(String(newCart.id));
-      } catch (error: any) {
-        setCartId(null);
-        setCartInitError(error?.message || 'Cart sync failed');
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['pos-orders'] });
-
-      if (res.receiptData) {
-        setReceiptData(res.receiptData);
-        setReceiptOpen(true);
-      } else if (res.id) {
-        try {
-          const receipt = await posService.getReceipt(res.id);
-          setReceiptData(receipt.data || receipt);
-          setReceiptOpen(true);
-        } catch {
-          showToast('Could not fetch receipt', 'warning');
-        }
-      }
-    },
-    onError: (error: any) => {
-      showToast(error?.message || 'Checkout failed', 'error');
-    },
-  });
-
-  const refundMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => posService.refundOrder(id, data),
-    onSuccess: () => {
-      showToast('Refund successful', 'success');
-      queryClient.invalidateQueries({ queryKey: ['pos-orders'] });
-    },
-    onError: (error: any) => {
-      showToast(error?.message || 'Refund failed', 'error');
-    },
-  });
+  // Product searching
+  useEffect(() => {
+    dispatch(fetchPosProducts(searchQuery || undefined));
+  }, [dispatch, searchQuery]);
 
   const handleAddToCart = async (product: any) => {
-    if (!cartId) {
+    if (!cartState.id) {
       showToast('Cart sync failed', 'error');
       return;
     }
@@ -239,38 +124,26 @@ export function PosRegister() {
       return;
     }
 
-    const existing = cart.find((item) => item.productId === String(productId));
+    const existing = cartState.items.find((item: any) => item.productId === String(productId));
 
     if (existing) {
-      const response = await updateCartItemMutation.mutateAsync({
-        activeCartId: cartId,
+      dispatch(updateCartQuantity({
+        cartId: cartState.id,
         lineId: existing.id,
-        data: { qty: existing.qty + 1 },
-      });
-      const syncedItems = extractCartItems(response);
-      if (syncedItems) {
-        setCart(syncedItems);
-      } else {
-        setCart((prev) => prev.map((item) => (item.id === existing.id ? { ...item, qty: item.qty + 1 } : item)));
-      }
+        qty: existing.qty + 1,
+      }));
       return;
     }
 
-    const response = await addToCartMutation.mutateAsync({
-      activeCartId: cartId,
-      data: { productId: String(productId), qty: 1 },
-    });
-
-    const syncedItems = extractCartItems(response);
-    if (syncedItems) {
-      setCart(syncedItems);
-      return;
-    }
-    throw new Error('Cart sync failed: backend did not return synchronized cart lines.');
+    dispatch(addProductToCart({
+      cartId: cartState.id,
+      productId: String(productId),
+      qty: 1,
+    }));
   };
 
   const handleUpdateQuantity = async (lineId: string, qty: number) => {
-    if (!cartId) {
+    if (!cartState.id) {
       showToast('Cart sync failed', 'error');
       return;
     }
@@ -280,116 +153,88 @@ export function PosRegister() {
       return;
     }
 
-    const response = await updateCartItemMutation.mutateAsync({
-      activeCartId: cartId,
+    dispatch(updateCartQuantity({
+      cartId: cartState.id,
       lineId,
-      data: { qty },
-    });
-    const syncedItems = extractCartItems(response);
-    if (syncedItems) {
-      setCart(syncedItems);
-      return;
-    }
-    throw new Error('Cart sync failed: backend did not return synchronized cart lines.');
+      qty,
+    }));
   };
 
   const handleRemoveItem = async (lineId: string) => {
-    if (!cartId) {
+    if (!cartState.id) {
       showToast('Cart sync failed', 'error');
       return;
     }
 
-    const response = await removeCartItemMutation.mutateAsync({
-      activeCartId: cartId,
+    dispatch(removeProductFromCart({
+      cartId: cartState.id,
       lineId,
-    });
-    const syncedItems = extractCartItems(response);
-    if (syncedItems) {
-      setCart(syncedItems);
-      return;
-    }
-    throw new Error('Cart sync failed: backend did not return synchronized cart lines.');
+    }));
   };
 
   const handleClearCart = async () => {
     setConfirmClearOpen(false);
-    setIsInitializingCart(true);
-    setCartInitError(null);
-
-    try {
-      const newCart = await posService.createCart();
-      if (!newCart?.id) {
-        throw new Error('Failed to clear cart.');
-      }
-      setCartId(String(newCart.id));
-      setCart([]);
-    } catch (error: any) {
-      setCartInitError(error?.message || 'Cart sync failed');
-      showToast(error?.message || 'Failed to clear cart', 'error');
-    } finally {
-      setIsInitializingCart(false);
-    }
+    dispatch(initializeCart());
   };
 
-  const paymentMethods = useMemo(() => normalizePaymentMethods(context?.paymentMethods), [context?.paymentMethods]);
-  const taxRate = toValidNumber(context?.taxRate);
-  const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
+  const paymentMethods = useMemo(() => normalizePaymentMethods(context.data?.paymentMethods), [context.data?.paymentMethods]);
+  const taxRate = toValidNumber(context.data?.taxRate);
+  const subtotal = cartState.items.reduce((acc, item) => acc + item.price * item.qty, 0);
   const tax = hasNumber(taxRate) ? subtotal * taxRate : null;
   const total = subtotal + (tax ?? 0);
 
-  const contextUnavailable = isErrorContext || !context;
-  const paymentMethodsUnavailable = paymentMethods.length === 0;
-  const cartMutationPending =
-    addToCartMutation.isPending || updateCartItemMutation.isPending || removeCartItemMutation.isPending;
-
-  const cartReady = !!cartId && !isInitializingCart && !cartInitError;
+  const contextUnavailable = context.error || (!context.loading && !context.data);
+  const paymentMethodsUnavailable = !context.loading && paymentMethods.length === 0;
+  
+  const cartReady = !!cartState.id && !cartState.loading && !cartState.error;
 
   const checkoutDisabledReason = (() => {
-    if (!cartReady) return cartInitError ? 'Cart sync failed' : 'Cart is not ready';
-    if (!context || contextUnavailable || isLoadingContext) return 'POS settings unavailable';
+    if (!cartReady) return cartState.error || 'Cart is not ready';
+    if (!context.data || contextUnavailable || context.loading) return 'POS settings unavailable';
     if (paymentMethodsUnavailable) return 'Payment methods unavailable';
-    if (cartMutationPending) return 'Cart is not ready';
-    if (!cart.length) return 'Cart is not ready';
+    if (cartState.loading) return 'Cart is not ready';
+    if (!cartState.items.length) return 'Cart is not ready';
     return null;
   })();
 
-  const canMutateCart = cartReady && !cartMutationPending;
-  const productAddDisabled = !canMutateCart || isLoadingContext || contextUnavailable;
-  let productAddDisabledReason: string | null = null;
-  if (!cartReady) {
-    productAddDisabledReason = cartInitError || 'Cart is not ready';
-  } else if (contextUnavailable) {
-    productAddDisabledReason = 'POS settings unavailable';
-  }
-
   const handleCheckoutConfirm = async (paymentMethod: string, amount: number) => {
-    if (!cartId) {
-      throw new Error('Cart is not ready');
+    if (!cartState.id) {
+      showToast('Cart is not ready', 'error');
+      return;
     }
 
-    await checkoutMutation.mutateAsync({
-      cartId,
-      customerId: selectedCustomer?.id === 'walk-in-ui-only' ? null : selectedCustomer?.id || null,
-      paymentMethod,
-      amountGiven: amount,
-    });
+    try {
+      const res = await dispatch(processCheckout({
+        cartId: cartState.id,
+        customerId: selectedCustomer?.id === 'walk-in-ui-only' ? null : selectedCustomer?.id || null,
+        paymentMethod,
+        amountGiven: amount,
+      })).unwrap();
+
+      showToast('Order successful!', 'success');
+      setSelectedCustomer(null);
+      setCheckoutOpen(false);
+      
+      setReceiptData(res.receiptData || res);
+      setReceiptOpen(true);
+      
+      dispatch(fetchPosOrders());
+    } catch (error: any) {
+      showToast(error || 'Checkout failed', 'error');
+    }
   };
 
   const handleSubmitBarcode = () => {
     const code = barcodeInput.trim();
-    if (!code) {
-      return;
-    }
+    if (!code) return;
 
-    const matched = (products || []).find((product: any) => String(product.barcode || product.sku || '') === code);
+    const matched = (productsState.data || []).find((product: any) => String(product.barcode || product.sku || '') === code);
     if (!matched) {
       showToast('No product matches this barcode', 'error');
       return;
     }
 
-    handleAddToCart(matched).catch((error: any) => {
-      showToast(error?.message || 'Cart sync failed', 'error');
-    });
+    handleAddToCart(matched);
     setBarcodeInput('');
   };
 
@@ -409,37 +254,33 @@ export function PosRegister() {
         <Box display="flex" flex={1} overflow="hidden">
           <Box flex={2} borderRight={1} borderColor="divider" bgcolor="background.paper" overflow="hidden">
             <PosProductGrid
-              products={products || []}
-              isLoading={isLoadingProducts}
-              isError={isErrorProducts}
-              onRetry={refetchProducts}
-              onAddToCart={(product) => {
-                handleAddToCart(product).catch((error: any) => {
-                  showToast(error?.message || 'Cart sync failed', 'error');
-                });
-              }}
+              products={productsState.data || []}
+              isLoading={productsState.loading}
+              isError={!!productsState.error}
+              onRetry={() => dispatch(fetchPosProducts(searchQuery || undefined))}
+              onAddToCart={handleAddToCart}
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
               barcodeInput={barcodeInput}
               onBarcodeInputChange={setBarcodeInput}
               onSubmitBarcode={handleSubmitBarcode}
-              addDisabled={productAddDisabled}
-              addDisabledReason={productAddDisabledReason}
+              addDisabled={!cartReady || context.loading}
+              addDisabledReason={checkoutDisabledReason}
             />
           </Box>
 
           <Box flex={1} display="flex" flexDirection="column" minWidth={350} bgcolor="background.paper">
-            {isLoadingContext && (
+            {context.loading && (
               <Box px={2} pt={2}>
                 <Alert severity="info">Loading POS settings...</Alert>
               </Box>
             )}
-            {isErrorContext && (
+            {context.error && (
               <Box px={2} pt={2}>
                 <Alert
                   severity="error"
                   action={
-                    <Button size="small" color="inherit" onClick={() => refetchContext()}>
+                    <Button size="small" color="inherit" onClick={() => dispatch(fetchPosContext())}>
                       Retry
                     </Button>
                   }
@@ -448,38 +289,28 @@ export function PosRegister() {
                 </Alert>
               </Box>
             )}
-            {isInitializingCart && (
+            {cartState.loading && (
               <Box px={2} pt={2}>
-                <Alert icon={<CircularProgress size={16} />} severity="info">Initializing cart...</Alert>
+                <Alert icon={<CircularProgress size={16} />} severity="info">Processing cart...</Alert>
               </Box>
             )}
-            {cartInitError && (
+            {cartState.error && (
               <Box px={2} pt={2}>
-                <Alert severity="error">Cart sync failed</Alert>
+                <Alert severity="error">Cart sync failed: {cartState.error}</Alert>
               </Box>
             )}
 
             <PosCustomerSelector
               selectedCustomer={selectedCustomer}
               onSelectCustomer={setSelectedCustomer}
-              onSearchCustomers={posService.getCustomers}
-              onCreateCustomer={posService.createCustomer}
             />
             <Box flex={1} overflow="hidden">
               <PosCart
-                items={cart}
-                onUpdateQuantity={(lineId, qty) => {
-                  handleUpdateQuantity(lineId, qty).catch((error: any) => {
-                    showToast(error?.message || 'Cart sync failed', 'error');
-                  });
-                }}
-                onRemoveItem={(lineId) => {
-                  handleRemoveItem(lineId).catch((error: any) => {
-                    showToast(error?.message || 'Cart sync failed', 'error');
-                  });
-                }}
+                items={cartState.items}
+                onUpdateQuantity={handleUpdateQuantity}
+                onRemoveItem={handleRemoveItem}
                 onClearCart={() => setConfirmClearOpen(true)}
-                disabled={!canMutateCart}
+                disabled={!cartReady || cartState.loading}
               />
             </Box>
             <Box borderTop={1} borderColor="divider">
@@ -488,7 +319,7 @@ export function PosRegister() {
                 tax={tax}
                 total={total}
                 onCheckout={() => setCheckoutOpen(true)}
-                disabled={!!checkoutDisabledReason || checkoutMutation.isPending}
+                disabled={!!checkoutDisabledReason || checkoutState.loading}
                 disabledReason={checkoutDisabledReason}
               />
             </Box>
@@ -499,10 +330,10 @@ export function PosRegister() {
       {activeTab === 'orders' && (
         <Box flex={1} overflow="auto" bgcolor="background.paper" p={2}>
           <PosOrdersTable
-            orders={orders}
-            isLoading={isLoadingOrders}
-            isError={isErrorOrders}
-            onRetry={refetchOrders}
+            orders={ordersState.data}
+            isLoading={ordersState.loading}
+            isError={!!ordersState.error}
+            onRetry={() => dispatch(fetchPosOrders())}
             onViewReceipt={async (id) => {
               try {
                 const receipt = await posService.getReceipt(id);
@@ -548,7 +379,13 @@ export function PosRegister() {
           orderId={selectedOrder.ticketNo || selectedOrder.id}
           maxAmount={selectedOrder.totalAmount}
           onRefund={async (reason, amount) => {
-            await refundMutation.mutateAsync({ id: selectedOrder.id, data: { reason, amount } });
+            try {
+              await dispatch(refundPosOrder({ id: selectedOrder.id, reason, amount })).unwrap();
+              showToast('Refund successful', 'success');
+              dispatch(fetchPosOrders());
+            } catch (error: any) {
+              showToast(error || 'Refund failed', 'error');
+            }
           }}
         />
       )}

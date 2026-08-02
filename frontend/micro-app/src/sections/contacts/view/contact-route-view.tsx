@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchContactsByType, selectContacts } from 'src/store/slices/contact-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -18,7 +19,6 @@ import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { contactService } from 'src/services/contact-service';
 
 import { Scrollbar } from 'src/components/scrollbar';
 
@@ -33,8 +33,12 @@ type Props = {
 };
 
 export function ContactRouteView({ type, id, mode }: Props) {
+  const dispatch = useAppDispatch();
   const router = useRouter();
   const isDetailMode = Boolean(mode && id);
+
+  const contactState = useAppSelector(selectContacts);
+  const { data, loading } = contactState.contacts;
 
   const title = useMemo(() => {
     if (isDetailMode) return `Contact ${mode}`;
@@ -44,11 +48,11 @@ export function ContactRouteView({ type, id, mode }: Props) {
     return 'Contacts';
   }, [isDetailMode, mode, type]);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['contacts-route', type, id],
-    queryFn: () => contactService.getContactsByType(type || 'all', id),
-    enabled: !isDetailMode && Boolean(type || id),
-  });
+  useEffect(() => {
+    if (!isDetailMode && type) {
+      dispatch(fetchContactsByType({ type, id }));
+    }
+  }, [dispatch, type, id, isDetailMode]);
 
   if (isDetailMode && id) {
     return <ContactDetailsView id={id} mode={mode} />;
@@ -79,7 +83,7 @@ export function ContactRouteView({ type, id, mode }: Props) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {isLoading ? (
+              {loading ? (
                 <TableRow>
                   <TableCell colSpan={4} align="center" sx={{ py: 8 }}>
                     <CircularProgress />
@@ -88,11 +92,11 @@ export function ContactRouteView({ type, id, mode }: Props) {
               ) : (
                 (data || []).map((contact: any) => (
                   <TableRow
-                    key={contact._id}
+                    key={contact._id || contact.id}
                     hover
                     sx={{ cursor: 'pointer' }}
                     onClick={() => {
-                      router.push(paths.dashboard.contactView(contact._id, 'overview'));
+                      router.push(paths.dashboard.contactView(contact._id || contact.id, 'overview'));
                     }}
                   >
                     <TableCell>{contact.fullName}</TableCell>
@@ -103,7 +107,7 @@ export function ContactRouteView({ type, id, mode }: Props) {
                 ))
               )}
 
-              {!isLoading && (data || []).length === 0 && (
+              {!loading && (data || []).length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} align="center" sx={{ py: 8 }}>
                     <Stack spacing={1}>

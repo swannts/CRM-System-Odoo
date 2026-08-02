@@ -1,9 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchCheckoutPageThunk,
+  fetchQrPayPageThunk,
+  fetchPublicWaiverThunk,
+  generatePhoneVerificationThunk,
+  trackQrPayPaymentThunk,
+  selectPublicFlow,
+} from 'src/store/slices/public-flow-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -11,21 +19,18 @@ import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
 import Container from '@mui/material/Container';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
+import LoadingButton from '@mui/lab/LoadingButton';
 
 import { paths } from 'src/routes/paths';
-
-import { publicFlowService } from 'src/services/public-flow-service';
 
 import { Iconify } from 'src/components/iconify';
 
 import { PublicOrgView } from './public-org-view';
 import { WaiverSignView } from './waiver-sign-view';
-// --- Internal Import ---
 import { PublicEventView } from './public-event-view';
 import { PublicPagesView } from './public-pages-view';
 import { PublicSupportView } from './public-support-view';
@@ -121,6 +126,12 @@ type Props = {
   token?: string;
   duration?: string;
   userId?: string;
+  shopId?: string;
+  productId?: string;
+  orderId?: string;
+  workspaceId?: string;
+  boardId?: string;
+  cartId?: string;
 };
 
 export function PublicFlowWorkspaceView(props: Props) {
@@ -137,11 +148,26 @@ export function PublicFlowWorkspaceView(props: Props) {
     formId,
     formPageId,
     referralCode,
+    eventId,
+    campaignId,
+    ticketId,
+    chatbotId,
+    contractId,
+    planId,
+    token,
+    userId,
+    shopId,
+    productId,
+    orderId,
+    workspaceId,
+    boardId,
+    cartId,
   } = props;
-  const [verificationResult, setVerificationResult] = useState<any>(null);
+
+  const dispatch = useAppDispatch();
+  const { checkoutPage, qrPayPage, waiver, verification } = useAppSelector(selectPublicFlow);
+
   const [qrTracked, setQrTracked] = useState(false);
-  const [waiverChecks, setWaiverChecks] = useState<boolean[]>([]);
-  const [signSuccess, setSignSuccess] = useState(false);
 
   const phoneMethods = useForm({
     defaultValues: {
@@ -158,14 +184,6 @@ export function PublicFlowWorkspaceView(props: Props) {
     },
   });
 
-  const waiverMethods = useForm({
-    defaultValues: {
-      signerName: '',
-      signature: '',
-      questionAnswers: '',
-    },
-  });
-
   const affiliateMethods = useForm({
     defaultValues: {
       fullName: '',
@@ -175,40 +193,34 @@ export function PublicFlowWorkspaceView(props: Props) {
     },
   });
 
-  const checkoutQuery = useQuery({
-    queryKey: ['public-checkout-page', slug],
-    queryFn: () => publicFlowService.getCheckoutPagePublic(slug!),
-    enabled: mode === 'checkout' && Boolean(slug),
-  });
+  useEffect(() => {
+    if (mode === 'checkout' && slug) {
+      dispatch(fetchCheckoutPageThunk(slug));
+    }
+    if (mode === 'qrpay' && slug) {
+      dispatch(fetchQrPayPageThunk(slug));
+    }
+    if (mode === 'waiver' && id) {
+      dispatch(fetchPublicWaiverThunk(id));
+    }
+  }, [dispatch, mode, slug, id]);
 
-  const qrPayQuery = useQuery({
-    queryKey: ['public-qrpay-page', slug],
-    queryFn: () => publicFlowService.getQrPayPagePublic(slug!),
-    enabled: mode === 'qrpay' && Boolean(slug),
-  });
+  const handlePhoneSubmit = async (values: any) => {
+    await dispatch(generatePhoneVerificationThunk({
+      ...values,
+      userId: location,
+      organizationId,
+    })).unwrap();
+  };
 
-  const waiverQuery = useQuery({
-    queryKey: ['public-waiver', id],
-    queryFn: () => publicFlowService.getPublicWaiver(id!),
-    enabled: mode === 'waiver' && Boolean(id),
-  });
+  const handleQrTrackSubmit = async (values: any) => {
+    if (slug) {
+      await dispatch(trackQrPayPaymentThunk({ slug, values })).unwrap();
+      setQrTracked(true);
+    }
+  };
 
-  const phoneMutation = useMutation({
-    mutationFn: (values: any) =>
-      publicFlowService.generateContactPhoneVerification({
-        ...values,
-        userId: location,
-        organizationId,
-      }),
-    onSuccess: (data) => setVerificationResult(data),
-  });
-
-  const qrTrackMutation = useMutation({
-    mutationFn: (values: any) => publicFlowService.trackQrPayPayment(slug!, values),
-    onSuccess: () => setQrTracked(true),
-  });
-
-  const isLoading = checkoutQuery.isLoading || qrPayQuery.isLoading || waiverQuery.isLoading;
+  const isLoading = checkoutPage.loading || qrPayPage.loading || waiver.loading;
 
   if (isLoading) {
     return (
@@ -218,9 +230,8 @@ export function PublicFlowWorkspaceView(props: Props) {
     );
   }
 
-  const checkoutData = checkoutQuery.data;
-  const qrPayData = qrPayQuery.data;
-  const waiverData = waiverQuery.data;
+  const checkoutData = checkoutPage.data;
+  const qrPayData = qrPayPage.data;
 
   return (
     <Container maxWidth="lg" sx={{ py: 5 }}>
@@ -404,14 +415,14 @@ export function PublicFlowWorkspaceView(props: Props) {
                 <Stack
                   component="form"
                   spacing={2}
-                  onSubmit={qrMethods.handleSubmit((values) => qrTrackMutation.mutate(values))}
+                  onSubmit={qrMethods.handleSubmit(handleQrTrackSubmit)}
                 >
                   <TextField label="Amount" {...qrMethods.register('amount')} />
                   <TextField label="Email" {...qrMethods.register('email')} />
                   <TextField label="Phone" {...qrMethods.register('phone')} />
-                  <Button type="submit" variant="contained" disabled={qrTrackMutation.isPending}>
+                  <LoadingButton type="submit" variant="contained" loading={qrPayPage.loading}>
                     Track Payment Intent
-                  </Button>
+                  </LoadingButton>
                 </Stack>
                 {qrTracked && <Alert severity="success" sx={{ mt: 2 }}>Payment tracking request sent.</Alert>}
               </Card>
@@ -442,15 +453,15 @@ export function PublicFlowWorkspaceView(props: Props) {
             <Stack
               component="form"
               spacing={2}
-              onSubmit={phoneMethods.handleSubmit((values) => phoneMutation.mutate(values))}
+              onSubmit={phoneMethods.handleSubmit(handlePhoneSubmit)}
             >
               <TextField label="Phone Number" {...phoneMethods.register('phoneNumber')} />
               <TextField label="Back To / Source" {...phoneMethods.register('source')} />
-              <Button type="submit" variant="contained" disabled={phoneMutation.isPending}>
+              <LoadingButton type="submit" variant="contained" loading={verification.loading}>
                 Send Verification
-              </Button>
+              </LoadingButton>
             </Stack>
-            {verificationResult && (
+            {verification.result && (
               <Alert severity="success" sx={{ mt: 2 }}>
                 Verification request sent. organizationId: {organizationId}, location: {location}
               </Alert>
@@ -646,4 +657,3 @@ export function PublicFlowWorkspaceView(props: Props) {
     </Container>
   );
 }
-

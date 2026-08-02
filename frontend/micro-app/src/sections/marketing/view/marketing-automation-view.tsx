@@ -1,6 +1,15 @@
-'use client';
-
 import { useEffect, useMemo, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchSequences,
+  fetchEnrollments,
+  selectMarketing,
+  createSequence,
+  updateSequence,
+  deleteSequence as deleteSequenceThunk,
+  enrollInSequence,
+  sequenceEnrollmentAction,
+} from 'src/store/slices/marketing-slice';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -33,12 +42,16 @@ import { emailSequenceService, type EmailSequence, type SequenceStep } from '../
 const EMPTY_STEP: SequenceStep = { stepNumber: 1, type: 'email', delayDays: 0, templateId: '' };
 
 export function MarketingAutomationView() {
-  const [sequences, setSequences] = useState<EmailSequence[]>([]);
+  const dispatch = useAppDispatch();
+  const { sequences: sequencesState, enrollments: enrollmentsState } = useAppSelector(selectMarketing);
+
+  const sequences = sequencesState.data;
+  const enrollments = enrollmentsState.data;
+  const loading = sequencesState.loading || enrollmentsState.loading;
+  const error = sequencesState.error || enrollmentsState.error;
+
   const [selectedId, setSelectedId] = useState<string>('');
-  const [enrollments, setEnrollments] = useState<any[]>([]);
   const [selectedEnrollment, setSelectedEnrollment] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>('');
 
   const [openEditor, setOpenEditor] = useState(false);
   const [openEnroll, setOpenEnroll] = useState(false);
@@ -57,26 +70,12 @@ export function MarketingAutomationView() {
   const selectedSequence = useMemo(() => sequences.find((s) => s.id === selectedId), [sequences, selectedId]);
 
   const loadSequences = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await emailSequenceService.list();
-      setSequences(data || []);
-      if (!selectedId && data?.[0]?.id) setSelectedId(data[0].id);
-    } catch (e: any) {
-      setError(e.message || 'Failed to load sequences');
-    } finally {
-      setLoading(false);
-    }
+    const result = await dispatch(fetchSequences()).unwrap();
+    if (!selectedId && result?.[0]?.id) setSelectedId(result[0].id);
   };
 
   const loadEnrollments = async (sequenceId: string) => {
-    try {
-      const data = await emailSequenceService.listEnrollments(sequenceId);
-      setEnrollments(data || []);
-    } catch (e: any) {
-      setError(e.message || 'Failed to load enrollments');
-    }
+    dispatch(fetchEnrollments(sequenceId));
   };
 
   useEffect(() => {
@@ -110,34 +109,37 @@ export function MarketingAutomationView() {
   const saveSequence = async () => {
     const payload = { name, description, steps };
     if (editingId) {
-      await emailSequenceService.update(editingId, payload);
+      await dispatch(updateSequence({ id: editingId, payload })).unwrap();
     } else {
-      await emailSequenceService.create(payload);
+      await dispatch(createSequence(payload)).unwrap();
     }
     setOpenEditor(false);
     await loadSequences();
   };
 
   const deleteSequence = async (id: string) => {
-    await emailSequenceService.remove(id);
+    await dispatch(deleteSequenceThunk(id)).unwrap();
     if (selectedId === id) setSelectedId('');
     await loadSequences();
   };
 
   const toggleActive = async (sequence: EmailSequence, isActive: boolean) => {
-    await emailSequenceService.update(sequence.id, { isActive });
+    await dispatch(updateSequence({ id: sequence.id, payload: { isActive } })).unwrap();
     await loadSequences();
   };
 
   const submitEnrollment = async () => {
     if (!selectedId) return;
-    await emailSequenceService.enroll(selectedId, {
-      contactEmail: enrollEmail,
-      firstName: enrollFirstName,
-      lastName: enrollLastName,
-      companyName: enrollCompanyName,
-      dealName: enrollDealName,
-    });
+    await dispatch(enrollInSequence({
+      id: selectedId,
+      payload: {
+        contactEmail: enrollEmail,
+        firstName: enrollFirstName,
+        lastName: enrollLastName,
+        companyName: enrollCompanyName,
+        dealName: enrollDealName,
+      }
+    })).unwrap();
     setOpenEnroll(false);
     setEnrollEmail('');
     setEnrollFirstName('');
@@ -149,9 +151,7 @@ export function MarketingAutomationView() {
   };
 
   const enrollmentAction = async (id: string, action: 'pause' | 'resume' | 'cancel') => {
-    if (action === 'pause') await emailSequenceService.pauseEnrollment(id);
-    if (action === 'resume') await emailSequenceService.resumeEnrollment(id);
-    if (action === 'cancel') await emailSequenceService.cancelEnrollment(id);
+    await dispatch(sequenceEnrollmentAction({ id, action })).unwrap();
     if (selectedId) await loadEnrollments(selectedId);
   };
 

@@ -79,7 +79,7 @@ interface Props extends BoxProps {
 export function Chart({ type = 'bar', series, options, height, width, sx, ...other }: Props) {
   return (
     <StyledRoot sx={{ flexShrink: 0, ...sx }} {...other}>
-      <ApexChart type={type} series={series} options={options} width="100%" height={height || '100%'} />
+      <ApexChart type={type as any} series={series} options={options} width="100%" height={height || '100%'} />
     </StyledRoot>
   );
 }

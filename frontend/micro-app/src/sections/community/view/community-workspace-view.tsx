@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchCommunityPosts, selectCommunity } from 'src/store/slices/community-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -11,17 +12,13 @@ import Tabs from '@mui/material/Tabs';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Avatar from '@mui/material/Avatar';
+import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-
 import { Iconify } from 'src/components/iconify';
-
-// ----------------------------------------------------------------------
-
-import { communityService } from 'src/services/community-service';
 
 import {
   CommunityFeed,
@@ -31,6 +28,8 @@ import {
   CommunityMessenger,
 } from './community-workspace-sections';
 
+// ----------------------------------------------------------------------
+
 type Props = {
   tab?: string;
   groupId?: string;
@@ -39,17 +38,22 @@ type Props = {
 };
 
 export function CommunityWorkspaceView({ tab, groupId, contactId, memberId }: Props) {
+  const dispatch = useAppDispatch();
+  const { posts } = useAppSelector(selectCommunity);
   const [activeTab, setActiveTab] = useState(tab || 'feed');
 
-  const { data: posts, isLoading: isPostsLoading } = useQuery({
-    queryKey: ['community-posts'],
-    queryFn: () => communityService.getPosts(),
-    enabled: activeTab === 'feed' && !groupId && !contactId && !memberId,
-  });
+  useEffect(() => {
+    if (activeTab === 'feed' && !groupId && !contactId && !memberId) {
+      dispatch(fetchCommunityPosts());
+    }
+  }, [dispatch, activeTab, groupId, contactId, memberId]);
 
   const isGroupDetail = Boolean(groupId);
   const isMemberProfile = Boolean(contactId);
   const isMessenger = activeTab === 'messenger' || Boolean(memberId);
+
+  const isLoading = posts.loading;
+  const postsData = posts.data;
 
   const renderContent = () => {
     if (isGroupDetail) {
@@ -94,7 +98,7 @@ export function CommunityWorkspaceView({ tab, groupId, contactId, memberId }: Pr
 
     switch (activeTab) {
       case 'feed':
-        return <CommunityFeed posts={posts} />;
+        return <CommunityFeed posts={postsData} />;
       case 'groups':
         return <CommunityGroups />;
       case 'members':
@@ -102,7 +106,7 @@ export function CommunityWorkspaceView({ tab, groupId, contactId, memberId }: Pr
       case 'settings':
         return <CommunitySettings />;
       default:
-        return <CommunityFeed posts={posts} />;
+        return <CommunityFeed posts={postsData} />;
     }
   };
 
@@ -154,7 +158,7 @@ export function CommunityWorkspaceView({ tab, groupId, contactId, memberId }: Pr
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={activeTab === 'feed' || activeTab === 'groups' ? 8 : 12}>
-           {isPostsLoading ? (
+           {isLoading && !postsData.length ? (
               <Box sx={{ py: 10, textAlign: 'center' }}>
                  <CircularProgress />
               </Box>

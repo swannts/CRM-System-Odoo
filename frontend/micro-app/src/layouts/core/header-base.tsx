@@ -48,6 +48,52 @@ const StyledDivider = styled('span')(({ theme }) => ({
 
 // ----------------------------------------------------------------------
 
+import type { SxProps, Theme } from '@mui/material/styles';
+
+import type { NavItem } from '../types';
+
+// ----------------------------------------------------------------------
+
+type Props = {
+  sx?: SxProps<Theme>;
+  onOpenNav?: VoidFunction;
+  layoutQuery: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  disableElevation?: boolean;
+  slots?: {
+    topArea?: React.ReactNode;
+    bottomArea?: React.ReactNode;
+    leftAreaStart?: React.ReactNode;
+    leftAreaEnd?: React.ReactNode;
+    rightAreaStart?: React.ReactNode;
+    rightAreaEnd?: React.ReactNode;
+  };
+  slotProps?: {
+    toolbar?: { sx?: SxProps<Theme> };
+    container?: { maxWidth?: false | 'xs' | 'sm' | 'md' | 'lg' | 'xl'; sx?: SxProps<Theme> };
+  };
+  slotsDisplay?: {
+    signIn?: boolean;
+    account?: boolean;
+    helpLink?: boolean;
+    settings?: boolean;
+    purchase?: boolean;
+    contacts?: boolean;
+    searchbar?: boolean;
+    workspaces?: boolean;
+    menuButton?: boolean;
+    localization?: boolean;
+    notifications?: boolean;
+  };
+  data?: {
+    nav?: NavItem[];
+    langs?: any[];
+    account?: any[];
+    contacts?: any[];
+    workspaces?: any[];
+    notifications?: any[];
+  };
+};
+
 export function HeaderBase({
   sx,
   data,
@@ -71,7 +117,7 @@ export function HeaderBase({
   } = {},
 
   ...other
-}) {
+}: Props) {
   const theme = useTheme();
 
   return (

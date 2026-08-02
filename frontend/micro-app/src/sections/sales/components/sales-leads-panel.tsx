@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import type { SalesLeadRow } from 'src/services/sales-dashboard-service';
-import { useQuery } from '@tanstack/react-query';
-import { scoringService } from 'src/services/scoring-service';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchHotLeads, selectScoring } from 'src/store/slices/scoring-slice';
 
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -16,11 +17,14 @@ import { formatOptionalCurrency } from '../utils';
 import { SalesEmptyState } from './sales-empty-state';
 
 export function SalesLeadsPanel({ leads, search }: { leads: SalesLeadRow[]; search: string }) {
-  const { data: hotLeads = [] } = useQuery({
-    queryKey: ['hot-lead-scores'],
-    queryFn: () => scoringService.getHotLeads(100, 0),
-    staleTime: 30 * 1000,
-  });
+  const dispatch = useAppDispatch();
+  const scoringState = useAppSelector(selectScoring);
+
+  useEffect(() => {
+    dispatch(fetchHotLeads());
+  }, [dispatch]);
+
+  const hotLeads = scoringState.hotLeads.data;
   const scoreById = new Map(hotLeads.map((lead: any) => [String(lead.leadOdooId ?? lead.id), Number(lead.score || 0)]));
   const query = search.trim().toLowerCase();
   const filtered = !query

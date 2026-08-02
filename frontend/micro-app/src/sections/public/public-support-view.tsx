@@ -1,6 +1,15 @@
-'use client';
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  selectSupport, 
+  fetchKbCategoriesThunk, 
+  submitSupportFeedbackThunk 
+} from 'src/store/slices/support-slice';
+import { 
+  selectHelpCenter, 
+  fetchArticleThunk, 
+  fetchArticlesThunk 
+} from 'src/store/slices/help-center-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -10,6 +19,7 @@ import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -23,7 +33,42 @@ type Props = {
 };
 
 export function PublicSupportView({ mode, id, ticketId, chatbotId }: Props) {
+  const dispatch = useAppDispatch();
+  const { categories } = useAppSelector(selectSupport);
+  const { articles, currentArticle } = useAppSelector(selectHelpCenter);
+
   const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+
+  useEffect(() => {
+    if (mode === 'help-center') {
+      dispatch(fetchKbCategoriesThunk());
+      dispatch(fetchArticlesThunk());
+    }
+    if (mode === 'help-article' && id) {
+      dispatch(fetchArticleThunk(id));
+    }
+  }, [dispatch, mode, id]);
+
+  const handleSubmitFeedback = () => {
+    dispatch(submitSupportFeedbackThunk({
+      rating,
+      comment,
+      ticketId,
+      chatbotId,
+      type: mode
+    }));
+  };
+
+  const isLoading = categories.loading || articles.loading || currentArticle.loading;
+
+  if (isLoading) {
+    return (
+      <Box sx={{ py: 10, textAlign: 'center' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ py: 3 }}>
@@ -60,9 +105,20 @@ export function PublicSupportView({ mode, id, ticketId, chatbotId }: Props) {
                       rows={4} 
                       placeholder="Share your thoughts with us..." 
                       label="Your Comments"
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
                     />
 
-                    <Button variant="contained" color="primary" size="large" fullWidth>Submit Feedback</Button>
+                    <Button 
+                      variant="contained" 
+                      color="primary" 
+                      size="large" 
+                      fullWidth
+                      onClick={handleSubmitFeedback}
+                      disabled={!rating}
+                    >
+                      Submit Feedback
+                    </Button>
                  </Stack>
               </Card>
            </Grid>
@@ -87,21 +143,29 @@ export function PublicSupportView({ mode, id, ticketId, chatbotId }: Props) {
                  </Box>
 
                  <Grid container spacing={3}>
-                    {['Getting Started', 'Account Settings', 'Billing & Payments', 'Integrations'].map((cat) => (
-                       <Grid item xs={12} sm={6} key={cat}>
+                    {categories.data.map((cat) => (
+                       <Grid item xs={12} sm={6} key={cat.id}>
                           <Card sx={{ p: 3, cursor: 'pointer', '&:hover': { bgcolor: 'background.neutral' } }}>
                              <Stack direction="row" spacing={2} alignItems="center">
                                 <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'primary.lighter', color: 'primary.main' }}>
                                    <Iconify icon="solar:folder-bold" />
                                 </Box>
                                 <Box>
-                                   <Typography variant="subtitle1">{cat}</Typography>
-                                   <Typography variant="caption" color="text.secondary">12 articles in this category</Typography>
+                                   <Typography variant="subtitle1">{cat.name}</Typography>
+                                   <Typography variant="caption" color="text.secondary">{cat.articleCount || 0} articles in this category</Typography>
                                 </Box>
                              </Stack>
                           </Card>
                        </Grid>
                     ))}
+                    {categories.data.length === 0 && (
+                      <Grid item xs={12}>
+                         <Box sx={{ py: 5, textAlign: 'center', opacity: 0.5 }}>
+                            <Iconify icon="solar:ghost-bold" width={48} sx={{ mb: 1 }} />
+                            <Typography variant="caption" display="block">No categories found.</Typography>
+                         </Box>
+                      </Grid>
+                    )}
                  </Grid>
               </Stack>
            )}
@@ -109,25 +173,23 @@ export function PublicSupportView({ mode, id, ticketId, chatbotId }: Props) {
            {mode === 'help-article' && (
               <Card sx={{ p: 4 }}>
                  <Button variant="text" color="inherit" startIcon={<Iconify icon="solar:arrow-left-bold" />} sx={{ mb: 3 }}>Back to Help Center</Button>
-                 <Typography variant="overline" color="primary" sx={{ fontWeight: 800 }}>GETTING STARTED</Typography>
-                 <Typography variant="h2" sx={{ mt: 1, mb: 3 }}>How to connect your custom domain</Typography>
+                 <Typography variant="overline" color="primary" sx={{ fontWeight: 800 }}>
+                   {currentArticle.data?.category?.toUpperCase() || 'GENERAL'}
+                 </Typography>
+                 <Typography variant="h2" sx={{ mt: 1, mb: 3 }}>{currentArticle.data?.title || 'Loading article...'}</Typography>
                  
                  <Stack spacing={3}>
-                    <Typography variant="body1" sx={{ color: 'text.secondary', lineHeight: 1.8 }}>
-                       Connecting a custom domain to your organization portal is a professional-grade way to enhance your brand presence. 
-                       Follow these tactical steps to orchestrate your DNS settings and verify your ownership.
-                    </Typography>
+                    <Typography 
+                      variant="body1" 
+                      sx={{ color: 'text.secondary', lineHeight: 1.8 }}
+                      dangerouslySetInnerHTML={{ __html: currentArticle.data?.content || '' }}
+                    />
                     
-                    <Box sx={{ p: 3, bgcolor: 'background.neutral', borderRadius: 2 }}>
-                       <Typography variant="subtitle2" sx={{ mb: 1 }}>Pro Tip</Typography>
-                       <Typography variant="body2">Ensure your CNAME records are correctly pointed to our server cluster for real-time verification.</Typography>
-                    </Box>
-
-                    <Typography variant="body1" sx={{ color: 'text.secondary', lineHeight: 1.8 }}>
-                       1. Navigate to Domain Settings in your mission control.
-                       2. Enter your full domain name (e.g. portal.yourbrand.com).
-                       3. Update your DNS records with your registrar.
-                    </Typography>
+                    {!currentArticle.data && (
+                      <Typography variant="body1" color="text.secondary">
+                        The article you are looking for could not be found.
+                      </Typography>
+                    )}
                  </Stack>
 
                  <Divider sx={{ my: 4, borderStyle: 'dashed' }} />

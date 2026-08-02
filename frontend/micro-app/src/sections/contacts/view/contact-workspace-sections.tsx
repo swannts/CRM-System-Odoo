@@ -1,5 +1,25 @@
-import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchCompanies, 
+  unlinkCompanyThunk, 
+  linkCompanyThunk,
+  createPetThunk,
+  updatePetThunk,
+  deletePetThunk,
+  createFileThunk,
+  deleteFileThunk,
+  createTaskThunk,
+  updateTaskThunk,
+  deleteTaskThunk,
+  createActivityThunk,
+  fetchContactById,
+  fetchContactPets,
+  fetchContactFiles,
+  fetchContactTasks,
+  fetchContactActivities,
+  selectContacts 
+} from 'src/store/slices/contact-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -55,7 +75,7 @@ import { Scrollbar } from 'src/components/scrollbar';
 // ----------------------------------------------------------------------
 
 export function ContactOverviewTab({ contact }: any) {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
   const companyDialog = useBoolean();
   const insights = contact?.insights || {
     totalSpent: 0,
@@ -99,9 +119,9 @@ export function ContactOverviewTab({ contact }: any) {
                     onClick={async () => {
                       if (confirm('Archive this contact relationship? (Unlinks from company)')) {
                         try {
-                          await contactService.unlinkCompany(contact.id);
+                          await dispatch(unlinkCompanyThunk(contact.id)).unwrap();
                           showToast({ message: 'Relationship archived' });
-                          queryClient.invalidateQueries({ queryKey: ['contact', contact.id] });
+                          dispatch(fetchContactById(contact.id));
                         } catch (e: any) {
                           showToast({ message: e.message, severity: 'error' });
                         }
@@ -211,9 +231,9 @@ export function ContactOverviewTab({ contact }: any) {
             </Typography>
             <CompanySelector onSelect={async (companyId) => {
               try {
-                await contactService.linkCompany(contact.id, companyId);
+                await dispatch(linkCompanyThunk({ id: contact.id, companyId })).unwrap();
                 showToast({ message: 'Company linked' });
-                queryClient.invalidateQueries({ queryKey: ['contact', contact.id] });
+                dispatch(fetchContactById(contact.id));
                 companyDialog.onFalse();
               } catch (e: any) {
                 showToast({ message: e.message, severity: 'error' });
@@ -447,6 +467,7 @@ export function ContactWorkHistoryTab({ shifts: shiftsData, loading, onClockIn, 
 }
 
 export function ContactPetsTab({ pets, loading, refetch, contactId }: any) {
+  const dispatch = useAppDispatch();
   const dialog = useBoolean();
   const deleteDialog = useBoolean();
   const [currentPet, setCurrentPet] = useState<any>(null);
@@ -488,16 +509,16 @@ export function ContactPetsTab({ pets, loading, refetch, contactId }: any) {
     try {
       setIsSaving(true);
       if (currentPet) {
-        await contactService.updatePet(currentPet.id, formValues);
+        await dispatch(updatePetThunk({ id: currentPet.id, data: formValues })).unwrap();
         showToast({ message: 'Pet updated successfully' });
       } else {
-        await contactService.createPet(contactId, formValues);
+        await dispatch(createPetThunk({ contactId, data: formValues })).unwrap();
         showToast({ message: 'Pet registered successfully' });
       }
-      refetch();
+      dispatch(fetchContactPets(contactId));
       dialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Failed to save pet', severity: 'warning' });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to save pet', severity: 'warning' });
     } finally {
       setIsSaving(false);
     }
@@ -510,12 +531,12 @@ export function ContactPetsTab({ pets, loading, refetch, contactId }: any) {
 
   const handleDelete = async () => {
     try {
-      await contactService.deletePet(petToDelete.id);
+      await dispatch(deletePetThunk(petToDelete.id)).unwrap();
       showToast({ message: 'Pet removed' });
-      refetch();
+      dispatch(fetchContactPets(contactId));
       deleteDialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Failed to remove pet', severity: 'warning' });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to remove pet', severity: 'warning' });
     }
   };
 
@@ -696,6 +717,7 @@ function PetCard({ pet, onEdit, onDelete }: any) {
 }
 
 export function ContactFilesTab({ files, loading, refetch, contactId }: any) {
+  const dispatch = useAppDispatch();
   const dialog = useBoolean();
   const deleteDialog = useBoolean();
   const [fileToDelete, setFileToDelete] = useState<any>(null);
@@ -725,12 +747,12 @@ export function ContactFilesTab({ files, loading, refetch, contactId }: any) {
         type: selectedFile.type,
         url: '#', // Placeholder
       };
-      await contactService.createFile(contactId, newFile);
+      await dispatch(createFileThunk({ contactId, data: newFile })).unwrap();
       showToast({ message: 'File uploaded successfully' });
-      refetch();
+      dispatch(fetchContactFiles(contactId));
       dialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Upload failed', severity: 'warning' });
+    } catch (error: any) {
+      showToast({ message: error || 'Upload failed', severity: 'warning' });
     } finally {
       setIsUploading(false);
     }
@@ -743,12 +765,12 @@ export function ContactFilesTab({ files, loading, refetch, contactId }: any) {
 
   const handleDelete = async () => {
     try {
-      await contactService.deleteFile(fileToDelete.id);
+      await dispatch(deleteFileThunk(fileToDelete.id)).unwrap();
       showToast({ message: 'File removed' });
-      refetch();
+      dispatch(fetchContactFiles(contactId));
       deleteDialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Failed to remove file', severity: 'warning' });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to remove file', severity: 'warning' });
     }
   };
 
@@ -955,6 +977,7 @@ export function ContactFilesTab({ files, loading, refetch, contactId }: any) {
 }
 
 export function ContactTimeline({ activities, loading, refetch, contactId }: any) {
+  const dispatch = useAppDispatch();
   const dialog = useBoolean();
   const deleteDialog = useBoolean();
   const [currentActivity, setCurrentActivity] = useState<any>(null);
@@ -1005,45 +1028,48 @@ export function ContactTimeline({ activities, loading, refetch, contactId }: any
       };
 
       if (currentActivity) {
-        await contactService.updateActivity(currentActivity.id, {
-          ...formValues,
-          icon: iconMap[formValues.type],
-          color: colorMap[formValues.type],
-        });
+        await dispatch(updateActivityThunk({ 
+          id: currentActivity.id, 
+          data: {
+            ...formValues,
+            icon: iconMap[formValues.type],
+            color: colorMap[formValues.type],
+          }
+        })).unwrap();
         showToast({ message: 'Activity updated successfully' });
       } else {
-        await contactService.createActivity(contactId, {
-          ...formValues,
-          icon: iconMap[formValues.type],
-          color: colorMap[formValues.type],
-          author: 'Current User',
-        });
+        await dispatch(createActivityThunk({ 
+          contactId, 
+          data: {
+            ...formValues,
+            icon: iconMap[formValues.type],
+            color: colorMap[formValues.type],
+          }
+        })).unwrap();
         showToast({ message: 'Activity logged successfully' });
       }
-
-      refetch();
+      dispatch(fetchContactActivities(contactId));
       dialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Failed to save activity', severity: 'warning' });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to save activity', severity: 'warning' });
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await dispatch(deleteActivityThunk(activityToDelete.id)).unwrap();
+      showToast({ message: 'Activity removed' });
+      dispatch(fetchContactActivities(contactId));
+      deleteDialog.onFalse();
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to remove activity', severity: 'warning' });
+    }
+  };
   const confirmDelete = (activity: any) => {
     setActivityToDelete(activity);
     deleteDialog.onTrue();
-  };
-
-  const handleDelete = async () => {
-    try {
-      await contactService.deleteActivity(activityToDelete.id);
-      showToast({ message: 'Activity removed' });
-      refetch();
-      deleteDialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Failed to remove activity', severity: 'warning' });
-    }
   };
 
   if (loading && (!activities || activities.length === 0)) {
@@ -1368,6 +1394,7 @@ export function ContactProjectsTab({ projects, loading }: any) {
 }
 
 export function TasksTab({ tasks, loading, refetch, contactId }: any) {
+  const dispatch = useAppDispatch();
   const dialog = useBoolean();
   const deleteDialog = useBoolean();
   const [currentTask, setCurrentTask] = useState<any>(null);
@@ -1407,16 +1434,16 @@ export function TasksTab({ tasks, loading, refetch, contactId }: any) {
     try {
       setIsSaving(true);
       if (currentTask) {
-        await contactService.updateTask(currentTask.id, formValues);
+        await dispatch(updateTaskThunk({ id: currentTask.id, data: formValues })).unwrap();
         showToast({ message: 'Task updated successfully' });
       } else {
-        await contactService.createTask(contactId, formValues);
+        await dispatch(createTaskThunk({ contactId, data: formValues })).unwrap();
         showToast({ message: 'Task created successfully' });
       }
-      refetch();
+      dispatch(fetchContactTasks(contactId));
       dialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Failed to save task', severity: 'warning' });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to save task', severity: 'warning' });
     } finally {
       setIsSaving(false);
     }
@@ -1425,9 +1452,9 @@ export function TasksTab({ tasks, loading, refetch, contactId }: any) {
   const handleToggleStatus = async (task: any) => {
     try {
       const newStatus = task.status === 'done' ? 'pending' : 'done';
-      await contactService.updateTask(task.id, { status: newStatus });
+      await dispatch(updateTaskThunk({ id: task.id, data: { status: newStatus } })).unwrap();
       showToast({ message: `Task marked as ${newStatus}` });
-      refetch();
+      dispatch(fetchContactTasks(contactId));
     } catch (error) {
       showToast({ message: 'Failed to update status', severity: 'warning' });
     }
@@ -1440,12 +1467,12 @@ export function TasksTab({ tasks, loading, refetch, contactId }: any) {
 
   const handleDelete = async () => {
     try {
-      await contactService.deleteTask(taskToDelete.id);
-      showToast({ message: 'Task removed' });
-      refetch();
+      await dispatch(deleteTaskThunk(taskToDelete.id)).unwrap();
+      showToast({ message: 'Task archived' });
+      dispatch(fetchContactTasks(contactId));
       deleteDialog.onFalse();
-    } catch (error) {
-      showToast({ message: 'Failed to remove task', severity: 'warning' });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to archive task', severity: 'warning' });
     }
   };
 
@@ -1580,7 +1607,7 @@ export function TasksTab({ tasks, loading, refetch, contactId }: any) {
         <DialogContent>Are you sure you want to permanently delete this task?</DialogContent>
         <DialogActions>
           <Button onClick={deleteDialog.onFalse}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={handleDelete}>Archive</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>Remove</Button>
         </DialogActions>
       </Dialog>
     </Stack>
@@ -1590,14 +1617,16 @@ export function TasksTab({ tasks, loading, refetch, contactId }: any) {
 // ----------------------------------------------------------------------
 
 function CompanySelector({ onSelect }: { onSelect: (id: number) => void }) {
+  const dispatch = useAppDispatch();
   const [search, setSearch] = useState('');
-  const { data: result, isLoading } = useQuery({
-    queryKey: ['companies-search', search],
-    queryFn: () => contactService.getCompanies({ search, pageSize: 20 }),
-    enabled: search.length > 2,
-  });
+  const contactState = useAppSelector(selectContacts);
+  const { data: companies, loading: isLoading } = contactState.companies;
 
-  const companies = result?.data || [];
+  useEffect(() => {
+    if (search.length > 2) {
+      dispatch(fetchCompanies({ search, pageSize: 20 }));
+    }
+  }, [dispatch, search]);
 
   return (
     <Stack spacing={2}>

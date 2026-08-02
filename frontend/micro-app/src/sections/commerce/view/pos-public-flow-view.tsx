@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchPosOrderThunk,
+  fetchOrderShippingThunk,
+  fetchDeliveryStatusThunk,
+  approveJoinCheckRequestThunk,
+  selectPublicFlow,
+} from 'src/store/slices/public-flow-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -15,12 +22,12 @@ import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
 import CircularProgress from '@mui/material/CircularProgress';
+import LoadingButton from '@mui/lab/LoadingButton';
 
 import { paths } from 'src/routes/paths';
 
-import { posService } from 'src/services/pos-service';
-
 import { showToast } from 'src/components/toast';
+import { Iconify } from 'src/components/iconify';
 
 type Props = {
   mode: 'table-join-approve' | 'table-register' | 'table-side' | 'deliver';
@@ -297,34 +304,29 @@ export function PosPublicFlowView({
   const searchParams = useSearchParams();
   const requesterPhone = searchParams.get('requester') || '';
 
+  const dispatch = useAppDispatch();
+  const { posOrder, approveJoin } = useAppSelector(selectPublicFlow);
+
   const orderLookupId = orderId || deliveryId || '';
 
-  const orderQuery = useQuery({
-    queryKey: ['pos-public-order', orderLookupId],
-    enabled: Boolean(orderLookupId),
-    queryFn: () => posService.getOrderById(orderLookupId),
-  });
+  useEffect(() => {
+    if (orderLookupId) {
+      dispatch(fetchPosOrderThunk(orderLookupId));
+    }
+    if (mode === 'deliver' && deliveryId) {
+      dispatch(fetchOrderShippingThunk(deliveryId));
+      dispatch(fetchDeliveryStatusThunk(deliveryId));
+    }
+  }, [dispatch, orderLookupId, mode, deliveryId]);
 
-  const shippingQuery = useQuery({
-    queryKey: ['pos-public-order-shipping', deliveryId],
-    enabled: mode === 'deliver' && Boolean(deliveryId),
-    queryFn: () => posService.getOrderShipping(deliveryId!),
-  });
-
-  const deliveryQuery = useQuery({
-    queryKey: ['pos-public-delivery', deliveryId],
-    enabled: mode === 'deliver' && Boolean(deliveryId),
-    queryFn: () => posService.getDeliveryStatus(deliveryId!),
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: () => posService.approveJoinCheckRequest({ orderId: orderId!, requesterPhone }),
-    onSuccess: () => {
+  const handleApprove = async () => {
+    if (orderId && requesterPhone) {
+      await dispatch(approveJoinCheckRequestThunk({ orderId, requesterPhone })).unwrap();
       showToast({ message: 'Join check request approved.', severity: 'success' });
-    },
-  });
+    }
+  };
 
-  const order = (orderQuery.data || null) as OrderRecord | null;
+  const order = (posOrder.data || null) as OrderRecord | null;
 
   const inviteLink = useMemo(() => {
     if (!orderId || !roomId || !table || !order?.organizationId || !order?.userId) {
@@ -369,10 +371,7 @@ export function PosPublicFlowView({
     router.replace(continueOrderHref);
   }, [continueOrderHref, mode, order?._id, order?.id, order?.shopId, roomId, router, table]);
 
-  const isLoading =
-    orderQuery.isLoading ||
-    (mode === 'deliver' && (deliveryQuery.isLoading || shippingQuery.isLoading)) ||
-    (mode === 'table-register' && orderQuery.isLoading);
+  const isLoading = posOrder.loading || (mode === 'table-register' && posOrder.loading);
 
   if (isLoading) {
     return (
@@ -387,7 +386,7 @@ export function PosPublicFlowView({
     );
   }
 
-  if (orderQuery.error) {
+  if (posOrder.error) {
     return (
       <PublicCardShell>
         <Stack spacing={3}>
@@ -440,22 +439,23 @@ export function PosPublicFlowView({
             <Alert severity="info">Guest phone ending in {requesterPhone.replace(/\D/g, '').slice(-4) || 'unknown'}.</Alert>
           )}
 
-          {approveMutation.isSuccess ? (
+          {approveJoin.success ? (
             <Alert severity="success">The guest has been approved and can now join this check.</Alert>
           ) : null}
 
-          {approveMutation.isError ? (
+          {approveJoin.error ? (
             <Alert severity="error">We could not approve the join request. Please try again.</Alert>
           ) : null}
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <Button
+            <LoadingButton
               variant="contained"
-              disabled={!requesterPhone || approveMutation.isPending}
-              onClick={() => approveMutation.mutate()}
+              disabled={!requesterPhone}
+              loading={approveJoin.loading}
+              onClick={handleApprove}
             >
-              {approveMutation.isPending ? 'Approving...' : 'Approve request'}
-            </Button>
+              Approve request
+            </LoadingButton>
             {continueOrderHref ? (
               <Button color="inherit" component={Link} href={continueOrderHref}>
                 Continue order
@@ -561,7 +561,7 @@ export function PosPublicFlowView({
     );
   }
 
-  const deliveryModel = buildDeliveryModel(order, deliveryQuery.data, shippingQuery.data);
+  const deliveryModel = buildDeliveryModel(order, posOrder.delivery, posOrder.shipping);
 
   return (
     <PublicCardShell>

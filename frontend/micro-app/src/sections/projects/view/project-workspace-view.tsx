@@ -1,6 +1,14 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchProjectTasks, 
+  fetchBoardById, 
+  fetchProjectColumns, 
+  fetchProjectCards,
+  selectProjects 
+} from 'src/store/slices/project-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -9,8 +17,6 @@ import Typography from '@mui/material/Typography';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { paths } from 'src/routes/paths';
-
-import { projectService } from 'src/services/project-service';
 
 import { FeatureRouteShell } from 'src/sections/parity/feature-route-shell';
 
@@ -23,31 +29,26 @@ type Props = {
 };
 
 export function ProjectWorkspaceView({ boardId, workspaceId, mode = 'tasks' }: Props) {
-  const tasksQuery = useQuery({
-    queryKey: ['project-tasks'],
-    queryFn: () => projectService.getTasks(),
-    enabled: mode === 'tasks',
-  });
+  const dispatch = useAppDispatch();
+  const projectState = useAppSelector(selectProjects);
+  
+  const { tasks } = projectState.currentProject;
+  const { data: board, columns, cards, loading: boardLoading } = projectState.currentProject.currentBoard;
 
-  const boardQuery = useQuery({
-    queryKey: ['shared-board', boardId],
-    queryFn: () => projectService.getBoard(boardId!),
-    enabled: Boolean(boardId),
-  });
+  useEffect(() => {
+    if (mode === 'tasks') {
+      dispatch(fetchProjectTasks('')); // Empty string or default project ID if available
+    }
+    if (mode === 'share-board' && boardId) {
+      dispatch(fetchBoardById(boardId));
+      dispatch(fetchProjectColumns(boardId));
+      dispatch(fetchProjectCards(boardId));
+    }
+  }, [dispatch, mode, boardId]);
 
-  const columnsQuery = useQuery({
-    queryKey: ['shared-board-columns', boardId],
-    queryFn: () => projectService.getColumns(boardId!),
-    enabled: Boolean(boardId),
-  });
+  const isLoading = boardLoading; // Simplified loading check
 
-  const cardsQuery = useQuery({
-    queryKey: ['shared-board-cards', boardId],
-    queryFn: () => projectService.getCards(boardId!),
-    enabled: Boolean(boardId),
-  });
-
-  if (tasksQuery.isLoading || boardQuery.isLoading || columnsQuery.isLoading || cardsQuery.isLoading) {
+  if (isLoading) {
     return (
       <Box sx={{ py: 8, textAlign: 'center' }}>
         <LinearProgress />
@@ -69,22 +70,22 @@ export function ProjectWorkspaceView({ boardId, workspaceId, mode = 'tasks' }: P
           {mode === 'share-board' ? (
             <>
               <Typography variant="h6">
-                {boardQuery.data?.name || boardQuery.data?.title || `Board ${boardId}`}
+                {board?.name || board?.title || `Board ${boardId}`}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 Workspace: {workspaceId}
               </Typography>
-              {(columnsQuery.data || []).map((column: any) => (
+              {(columns || []).map((column: any) => (
                 <Box key={column.id || column._id} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.neutral' }}>
                   <Typography variant="subtitle2">{column.title}</Typography>
                   <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {(cardsQuery.data || []).filter((card: any) => card.columnId === (column.id || column._id)).length} cards
+                    {(cards || []).filter((card: any) => card.columnId === (column.id || column._id)).length} cards
                   </Typography>
                 </Box>
               ))}
             </>
           ) : (
-            (tasksQuery.data || []).map((task: any) => (
+            (tasks || []).map((task: any) => (
               <Box key={task.id || task._id} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.neutral' }}>
                 <Typography variant="subtitle2">{task.title || task.name}</Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>

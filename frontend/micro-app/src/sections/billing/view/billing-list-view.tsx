@@ -1,7 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchBillingInvoices,
+  fetchBillingSummary,
+  fetchBillingReconciliation,
+  fetchBillingGraph,
+  selectBilling,
+} from 'src/store/slices/billing-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -68,6 +75,7 @@ const RECON_TABLE_HEAD = [
 // ----------------------------------------------------------------------
 
 export function BillingListView() {
+  const dispatch = useAppDispatch();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -75,30 +83,33 @@ export function BillingListView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const viewMode = searchParams.get('view') === 'graph' ? 'graph' : 'list';
-  
-  const { data: responseData, isLoading, refetch } = useQuery({
-    queryKey: ['invoices', search, page, rowsPerPage],
-    queryFn: () => billingService.getInvoices({ 
-      search, 
-      page: page + 1, 
-      pageSize: rowsPerPage 
-    }),
-  });
-  const { data: summaryData } = useQuery({
-    queryKey: ['billing-summary'],
-    queryFn: () => billingService.getSummary(),
-  });
-  const { data: reconciliationData, refetch: refetchReconciliation } = useQuery({
-    queryKey: ['billing-reconciliation'],
-    queryFn: () => billingService.getReconciliation(),
-    enabled: viewMode === 'list',
-  });
+
+  const billingState = useAppSelector(selectBilling);
+
+  useEffect(() => {
+    dispatch(fetchBillingInvoices({ search, page: page + 1, pageSize: rowsPerPage }));
+    dispatch(fetchBillingSummary());
+  }, [dispatch, search, page, rowsPerPage]);
+
+  useEffect(() => {
+    if (viewMode === 'list') {
+      dispatch(fetchBillingReconciliation());
+    }
+    if (viewMode === 'graph') {
+      dispatch(fetchBillingGraph(6));
+    }
+  }, [dispatch, viewMode]);
+
+  const invoices = billingState.invoices.data;
+  const totalInvoices = billingState.invoices.total;
+  const isLoading = billingState.invoices.loading;
+  const summaryData = billingState.summary.data;
+  const reconciliationData = billingState.reconciliation.data;
 
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
-  const invoices = (responseData as any)?.data || [];
+
   const reconciliationRows = Array.isArray(reconciliationData) ? reconciliationData : [];
-  const totalInvoices = (responseData as any)?.total || 0;
   const selectedInvoice = invoices.find((invoice: any) => String(invoice.id) === String(selectedInvoiceId));
   const paidAmount = Number(summaryData?.totalPaid ?? invoices.reduce((acc: number, curr: any) => acc + (Number(curr.paidAmount) || 0), 0));
   const outstandingAmount = Number(summaryData?.totalOutstanding ?? invoices.reduce((acc: number, curr: any) => acc + (Number(curr.totalDue) || 0), 0));
@@ -132,7 +143,7 @@ export function BillingListView() {
     try {
       if (selectedInvoiceId) {
         await billingService.deleteInvoice(selectedInvoiceId);
-        await refetch();
+        dispatch(fetchBillingInvoices({ search, page: page + 1, pageSize: rowsPerPage }));
         showToast({ message: 'Invoice deleted successfully.', severity: 'success' });
       }
     } catch (error: any) {
@@ -147,7 +158,7 @@ export function BillingListView() {
     try {
       if (!selectedInvoiceId) return;
       await billingService.postInvoice(selectedInvoiceId);
-      await refetch();
+      dispatch(fetchBillingInvoices({ search, page: page + 1, pageSize: rowsPerPage }));
       showToast({ message: 'Invoice posted successfully.', severity: 'success' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to post invoice';
@@ -183,7 +194,7 @@ export function BillingListView() {
     if (!magentoOrderRef) return;
     try {
       await billingService.linkReconciliation({ invoiceId, magentoOrderRef });
-      await refetchReconciliation();
+      dispatch(fetchBillingReconciliation());
       showToast({ message: 'Reconciliation link requested.', severity: 'success' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to link reconciliation';
@@ -194,7 +205,7 @@ export function BillingListView() {
   const handleUnlink = async (invoiceId: string | number) => {
     try {
       await billingService.unlinkReconciliation({ invoiceId });
-      await refetchReconciliation();
+      dispatch(fetchBillingReconciliation());
       showToast({ message: 'Reconciliation unlink requested.', severity: 'success' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to unlink reconciliation';
@@ -203,12 +214,8 @@ export function BillingListView() {
   };
 
   const totalAmount = Number(summaryData?.totalInvoiced ?? invoices.reduce((acc: number, curr: any) => acc + (Number(curr.totalAmount) || 0), 0));
-  const chartInvoicesQuery = useQuery({
-    queryKey: ['billing-graph'],
-    queryFn: () => billingService.getGraph(6),
-    enabled: viewMode === 'graph',
-  });
-  const graphData = chartInvoicesQuery.data as any;
+
+  const graphData = summaryData?.graph as any;
   const monthKeys = Array.isArray(graphData?.categories) ? graphData.categories : [];
   const chartSeries = Array.isArray(graphData?.series) ? graphData.series : [
     { name: 'Invoiced', data: [] },

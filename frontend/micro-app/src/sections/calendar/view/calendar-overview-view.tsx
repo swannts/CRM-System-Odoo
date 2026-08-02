@@ -1,6 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchCalendarEventsThunk, 
+  fetchBookingTypesThunk, 
+  selectCalendar 
+} from 'src/store/slices/calendar-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -16,27 +22,25 @@ import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { bookingService } from 'src/services/booking-service';
-import { calendarService } from 'src/services/calendar-service';
-
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function CalendarOverviewView() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const { events, bookingTypes } = useAppSelector(selectCalendar);
 
-  const { data: events, isLoading: eventsLoading } = useQuery({
-    queryKey: ['calendar-events'],
-    queryFn: () => calendarService.getEvents(),
-  });
+  useEffect(() => {
+    dispatch(fetchCalendarEventsThunk());
+    dispatch(fetchBookingTypesThunk());
+  }, [dispatch]);
 
-  const { data: bookingTypes, isLoading: bookingTypesLoading } = useQuery({
-    queryKey: ['booking-types'],
-    queryFn: () => bookingService.getBookingTypes(),
-  });
+  const eventsData = events.data || [];
+  const bookingTypesData = bookingTypes.data || [];
+  const isLoading = events.loading || bookingTypes.loading;
 
-  if (eventsLoading || bookingTypesLoading) {
+  if (isLoading && !eventsData.length && !bookingTypesData.length) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <CircularProgress />
@@ -45,7 +49,7 @@ export function CalendarOverviewView() {
   }
 
   const schedulingKPIs = [
-    { label: 'Upcoming Events', value: events?.length || 0, icon: 'solar:calendar-bold-duotone', color: 'primary' },
+    { label: 'Upcoming Events', value: eventsData.length || 0, icon: 'solar:calendar-bold-duotone', color: 'primary' },
     { label: 'Active Bookings', value: '24 Today', icon: 'solar:clock-circle-bold-duotone', color: 'info' },
     { label: 'Total Capacity', value: '85%', icon: 'solar:user-speak-bold-duotone', color: 'success' },
     { label: 'Waitlist', value: '12', icon: 'solar:users-group-rounded-bold-duotone', color: 'warning' },
@@ -101,7 +105,7 @@ export function CalendarOverviewView() {
                   <Button size="small">View Full Schedule</Button>
                </Stack>
                <Stack spacing={2}>
-                  {(events || []).slice(0, 5).map((event: any) => (
+                  {eventsData.slice(0, 5).map((event: any) => (
                      <Box key={event.id} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.neutral', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Stack direction="row" spacing={2} alignItems="center">
                            <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'primary.lighter', textAlign: 'center', minWidth: 60 }}>
@@ -129,6 +133,11 @@ export function CalendarOverviewView() {
                         </Stack>
                      </Box>
                   ))}
+                  {eventsData.length === 0 && !isLoading && (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                      No upcoming events.
+                    </Typography>
+                  )}
                </Stack>
             </Card>
          </Grid>
@@ -137,7 +146,7 @@ export function CalendarOverviewView() {
             <Card sx={{ p: 3, bgcolor: 'background.neutral', height: '100%' }}>
                <Typography variant="h6" sx={{ mb: 3 }}>Quick Booking Links</Typography>
                <Stack spacing={2}>
-                  {(bookingTypes || []).map((type: any) => (
+                  {bookingTypesData.map((type: any) => (
                      <Stack
                         key={type.id}
                         direction="row"
@@ -162,6 +171,11 @@ export function CalendarOverviewView() {
                         <Iconify icon="solar:copy-bold" sx={{ color: 'text.disabled' }} />
                      </Stack>
                   ))}
+                  {bookingTypesData.length === 0 && !isLoading && (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                      No booking types defined.
+                    </Typography>
+                  )}
                </Stack>
             </Card>
          </Grid>

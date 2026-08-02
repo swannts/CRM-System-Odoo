@@ -1,60 +1,81 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { billingService } from 'src/services/billing-service';
+import { useMemo } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchBillingInvoices,
+  fetchInvoiceById,
+  fetchBillingSummary,
+  fetchBillingGraph,
+  fetchBillingReconciliation,
+  postInvoiceThunk,
+  deleteInvoiceThunk,
+  selectBilling,
+} from 'src/store/slices/billing-slice';
 
 export function useInvoices(params?: any) {
-  return useQuery({
-    queryKey: ['invoices', params],
-    queryFn: () => billingService.getInvoices(params),
-  });
+  const dispatch = useAppDispatch();
+  const { invoices } = useAppSelector(selectBilling);
+
+  useMemo(() => {
+    dispatch(fetchBillingInvoices(params));
+  }, [dispatch, params]);
+
+  return invoices;
 }
 
 export function useInvoice(id: string) {
-  return useQuery({
-    queryKey: ['invoice', id],
-    queryFn: () => billingService.getInvoice(id),
-    enabled: !!id,
-  });
+  const dispatch = useAppDispatch();
+  const { currentInvoice } = useAppSelector(selectBilling);
+
+  useMemo(() => {
+    if (id) dispatch(fetchInvoiceById(id));
+  }, [dispatch, id]);
+
+  return currentInvoice;
 }
 
 export function useBillingSummary() {
-  return useQuery({
-    queryKey: ['billing-summary'],
-    queryFn: () => billingService.getSummary(),
-  });
+  const dispatch = useAppDispatch();
+  const { summary } = useAppSelector(selectBilling);
+
+  useMemo(() => {
+    dispatch(fetchBillingSummary());
+  }, [dispatch]);
+
+  return summary;
 }
 
 export function useBillingGraph(months: number = 6) {
-  return useQuery({
-    queryKey: ['billing-graph', months],
-    queryFn: () => billingService.getGraph(months),
-  });
+  const dispatch = useAppDispatch();
+  const { summary } = useAppSelector(selectBilling);
+
+  useMemo(() => {
+    dispatch(fetchBillingGraph(months));
+  }, [dispatch, months]);
+
+  return summary;
 }
 
 export function useBillingReconciliation() {
-  return useQuery({
-    queryKey: ['billing-reconciliation'],
-    queryFn: () => billingService.getReconciliation(),
-  });
+  const dispatch = useAppDispatch();
+  const { reconciliation } = useAppSelector(selectBilling);
+
+  useMemo(() => {
+    dispatch(fetchBillingReconciliation());
+  }, [dispatch]);
+
+  return reconciliation;
 }
 
 export function usePostInvoice() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => billingService.postInvoice(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['billing-summary'] });
-    },
-  });
+  const dispatch = useAppDispatch();
+  return {
+    mutate: (id: string) => dispatch(postInvoiceThunk(id)),
+  };
 }
 
 export function useDeleteInvoice() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => billingService.deleteInvoice(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['billing-summary'] });
-    },
-  });
+  const dispatch = useAppDispatch();
+  return {
+    mutate: (id: string) => dispatch(deleteInvoiceThunk(id)),
+  };
 }

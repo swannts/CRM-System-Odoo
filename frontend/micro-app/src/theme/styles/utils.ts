@@ -16,28 +16,28 @@ export const mediaQueries = {
 /**
  * Set font family
  */
-export function setFont(fontName) {
+export function setFont(fontName: string): string {
   return `"${fontName}",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol"`;
 }
 
 /**
  * Converts rem to px
  */
-export function remToPx(value) {
+export function remToPx(value: string): number {
   return Math.round(parseFloat(value) * 16);
 }
 
 /**
  * Converts px to rem
  */
-export function pxToRem(value) {
+export function pxToRem(value: number): string {
   return `${value / 16}rem`;
 }
 
 /**
  * Responsive font sizes
  */
-export function responsiveFontSizes({ sm, md, lg }) {
+export function responsiveFontSizes({ sm, md, lg }: { sm: number; md: number; lg: number }) {
   return {
     [mediaQueries.upSm]: { fontSize: pxToRem(sm) },
     [mediaQueries.upMd]: { fontSize: pxToRem(md) },
@@ -48,7 +48,7 @@ export function responsiveFontSizes({ sm, md, lg }) {
 /**
  * Converts a hex color to RGB channels
  */
-export function hexToRgbChannel(hex) {
+export function hexToRgbChannel(hex: string): string {
   if (!/^#[0-9A-F]{6}$/i.test(hex)) {
     throw new Error(`Invalid hex color: ${hex}`);
   }
@@ -63,8 +63,8 @@ export function hexToRgbChannel(hex) {
 /**
  * Converts a hex color to RGB channels
  */
-export function createPaletteChannel(hexPalette) {
-  const channelPalette = {};
+export function createPaletteChannel(hexPalette: Record<string, string>): Record<string, string> {
+  const channelPalette: Record<string, string> = {};
 
   Object.entries(hexPalette).forEach(([key, value]) => {
     channelPalette[`${key}Channel`] = hexToRgbChannel(value);
@@ -76,7 +76,7 @@ export function createPaletteChannel(hexPalette) {
 /**
  * Color with alpha channel
  */
-export function varAlpha(color, opacity = 1) {
+export function varAlpha(color: string, opacity: number | string = 1): string {
   const unsupported =
     color.startsWith('#') ||
     color.startsWith('rgb') ||

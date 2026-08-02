@@ -2,8 +2,17 @@
 
 import { z as zod } from 'zod';
 import { useForm } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchContacts,
+  fetchContactAnalytics,
+  fetchContactSummary,
+  createContactThunk,
+  updateContactThunk,
+  deleteContactThunk,
+  selectContacts
+} from 'src/store/slices/contact-slice';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -42,11 +51,9 @@ import { useRouter, usePathname, useSearchParams } from 'src/routes/hooks';
 import { useBoolean } from 'src/hooks/use-boolean';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { contactService } from 'src/services/contact-service';
-
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
-import { showToast } from 'src/components/toast';
+import { toast } from 'src/components/snackbar';
 import { Scrollbar } from 'src/components/scrollbar';
 import { Form, RHFSwitch, RHFTextField } from 'src/components/hook-form';
 
@@ -78,17 +85,18 @@ export const NewContactSchema = zod.object({
 // ----------------------------------------------------------------------
 
 export function ContactListView() {
+  const dispatch = useAppDispatch();
   const [search, setSearch] = useState('');
   const [currentTab, setCurrentTab] = useState('all');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [selectedContact, setSelectedContact] = useState<any>(null);
-  
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  
+
   const viewMode = searchParams.get('view') === 'kanban'
     ? 'kanban'
     : searchParams.get('view') === 'graph'
@@ -99,50 +107,34 @@ export function ContactListView() {
   const deleteConfirm = useBoolean();
   const importDialog = useBoolean();
 
-  const backendFilterType = currentTab === 'all'
-    ? undefined
-    : currentTab;
+  const contactState = useAppSelector(selectContacts);
 
-  const { data: contactsPageData, isLoading, refetch } = useQuery({
-    queryKey: ['contacts', search, currentTab, page, rowsPerPage],
-    queryFn: () =>
-      contactService.getContactsPaginated({
-        search,
-        type: backendFilterType,
-        page: page + 1,
-        pageSize: rowsPerPage,
-      }),
-  });
+  const backendFilterType = currentTab === 'all' ? undefined : currentTab;
+
+  const loadData = useCallback(() => {
+    dispatch(fetchContacts({ search, type: backendFilterType, page: page + 1, pageSize: rowsPerPage }));
+    dispatch(fetchContactSummary());
+    if (viewMode === 'graph') {
+      dispatch(fetchContactAnalytics({ search, type: backendFilterType }));
+    }
+  }, [dispatch, search, backendFilterType, page, rowsPerPage, viewMode]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
     setPage(0);
   }, [search, currentTab]);
 
-  const contacts = useMemo(() => contactsPageData?.data || [], [contactsPageData]);
-  const totalContactsFiltered = contactsPageData?.total ?? 0;
+  const contacts = contactState.contacts.data;
+  const totalContactsFiltered = contactState.contacts.total;
+  const isLoading = contactState.contacts.loading;
+  const graphAnalyticsData = contactState.analytics.data;
+  const isGraphLoading = contactState.analytics.loading;
 
-  const { data: graphAnalyticsData, isLoading: isGraphLoading, refetch: refetchGraph } = useQuery({
-    queryKey: ['contacts-graph', search, currentTab],
-    queryFn: () =>
-      contactService.getContactsAnalytics({
-        search,
-        type: backendFilterType,
-      }),
-  });
+  const summaryContacts = contactState.summary.data;
 
-  const { data: summaryContactsData, refetch: refetchSummary } = useQuery({
-    queryKey: ['contacts-summary'],
-    queryFn: () =>
-      contactService.getContacts({
-        search: '',
-        type: undefined,
-        page: 1,
-        pageSize: 200,
-      }),
-  });
-  const summaryContacts = useMemo(() => summaryContactsData || [], [summaryContactsData]);
-
-  // Summary stats (global, not tab-dependent)
   const totalContacts = summaryContacts.length;
   const leadCount = summaryContacts.filter((c: any) => String(c.contactType?.[0] || '').toLowerCase() === 'lead' || c.status === 'lead').length;
   const memberCount = summaryContacts.filter((c: any) => String(c.contactType?.[0] || '').toLowerCase() === 'member' || c.status === 'member').length;
@@ -172,22 +164,6 @@ export function ContactListView() {
 
   const isCompany = watch('isCompany');
 
-  useEffect(() => {
-    const handleRefetch = () => {
-      refetch();
-      refetchGraph();
-      refetchSummary();
-    };
-    window.addEventListener('REFETCH_CONTACTS', handleRefetch);
-    return () => {
-      window.removeEventListener('REFETCH_CONTACTS', handleRefetch);
-    };
-  }, [refetch, refetchGraph, refetchSummary]);
-
-  useEffect(() => {
-    setPage(0);
-  }, [search, currentTab, rowsPerPage]);
-
   const onChangeView = useCallback((newView: string) => {
     const params = new URLSearchParams(searchParams.toString());
     if (newView === 'kanban' || newView === 'graph') {
@@ -201,22 +177,18 @@ export function ContactListView() {
   const onSubmit = handleSubmit(async (data) => {
     try {
       if (selectedContact) {
-        // We'll need updateContact in contactService
-        await contactService.updateContact(selectedContact.id || selectedContact._id, data);
-        showToast({ message: 'Contact updated successfully.', severity: 'success' });
+        await dispatch(updateContactThunk({ id: selectedContact.id || selectedContact._id, data })).unwrap();
+        toast.success('Contact updated successfully');
       } else {
-        await contactService.createContact(data);
-        showToast({ message: 'Contact created successfully.', severity: 'success' });
+        await dispatch(createContactThunk(data)).unwrap();
+        toast.success('Contact created successfully');
       }
       reset();
       quickEdit.onFalse();
       setSelectedContact(null);
-      await refetch();
-      await refetchGraph();
-      await refetchSummary();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save contact';
-      showToast({ message, severity: 'warning' });
+      loadData();
+    } catch (error: any) {
+      toast.error(error || 'Failed to save contact');
     }
   });
 
@@ -251,15 +223,13 @@ export function ContactListView() {
 
   const handleDeleteContact = async () => {
     try {
-      await contactService.deleteContact(selectedContact.id || selectedContact._id);
-      showToast({ message: 'Contact archived successfully.', severity: 'success' });
+      await dispatch(deleteContactThunk(selectedContact.id || selectedContact._id)).unwrap();
+      toast.success('Contact archived successfully');
       deleteConfirm.onFalse();
       setSelectedContact(null);
-      await refetch();
-      await refetchGraph();
-      await refetchSummary();
-    } catch (error) {
-      showToast({ message: 'Failed to archive contact', severity: 'warning' });
+      loadData();
+    } catch (error: any) {
+      toast.error(error || 'Failed to archive contact');
     }
   };
 
@@ -560,7 +530,7 @@ export function ContactListView() {
       <ContactImportDialog 
         open={importDialog.value} 
         onClose={importDialog.onFalse} 
-        onRefresh={refetch} 
+        onRefresh={loadData} 
       />
     </DashboardContent>
   );
@@ -583,7 +553,7 @@ function SummaryCard({ title, count, icon, color }: any) {
           justifyContent: 'center',
           bgcolor: `${color}.main`,
           color: 'common.white',
-          boxShadow: (theme) => `0 8px 16px 0 ${theme.palette[color as 'primary' | 'secondary' | 'info' | 'success' | 'warning' | 'error'].main}24`,
+          boxShadow: (theme: any) => `0 8px 16px 0 ${theme.palette[color].main}24`,
         }}
       >
         <Iconify icon={icon} width={32} />

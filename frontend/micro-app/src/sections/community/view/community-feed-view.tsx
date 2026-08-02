@@ -1,6 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchCommunityPosts, createPostThunk, selectCommunity } from 'src/store/slices/community-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -15,19 +17,41 @@ import CardActions from '@mui/material/CardActions';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { communityService } from 'src/services/community-service';
-
 import { Iconify } from 'src/components/iconify';
+import { toast } from 'src/components/snackbar';
 
 // ----------------------------------------------------------------------
 
 export function CommunityFeedView() {
-  const { data: posts, isLoading } = useQuery({
-    queryKey: ['community-posts'],
-    queryFn: () => communityService.getPosts(),
-  });
+  const dispatch = useAppDispatch();
+  const { posts } = useAppSelector(selectCommunity);
+  
+  const [content, setContent] = useState('');
+  const [isPosting, setIsPosting] = useState(false);
 
-  if (isLoading) {
+  useEffect(() => {
+    dispatch(fetchCommunityPosts());
+  }, [dispatch]);
+
+  const handleCreatePost = async () => {
+    if (!content.trim()) return;
+    try {
+      setIsPosting(true);
+      await dispatch(createPostThunk({ content: content.trim() })).unwrap();
+      setContent('');
+      toast.success('Post shared!');
+      dispatch(fetchCommunityPosts());
+    } catch (error) {
+      toast.error(error || 'Failed to post');
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const isLoading = posts.loading;
+  const postsData = posts.data;
+
+  if (isLoading && !postsData.length) {
     return (
       <Box sx={{ p: 5, textAlign: 'center' }}>
         <CircularProgress />
@@ -50,22 +74,33 @@ export function CommunityFeedView() {
               rows={2}
               placeholder="Share something with the community..."
               variant="outlined"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
             />
           </Stack>
           <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-            <Button variant="contained">Post</Button>
+            <Button 
+              variant="contained" 
+              onClick={handleCreatePost} 
+              disabled={isPosting || !content.trim()}
+              startIcon={isPosting && <CircularProgress size={16} color="inherit" />}
+            >
+              Post
+            </Button>
           </Box>
         </Card>
 
         {/* Feed Posts */}
-        {(posts || []).map((post: any) => (
+        {postsData.map((post: any) => (
           <Card key={post._id}>
             <CardHeader
               avatar={<Avatar alt={post.authorName} />}
               title={post.authorName || 'Member'}
               subheader={new Date(post.createdAt).toLocaleString()}
               action={
-                <Button size="small" startIcon={<Iconify icon="eva:more-vertical-fill" />} />
+                <IconButton size="small">
+                  <Iconify icon="eva:more-vertical-fill" />
+                </IconButton>
               }
             />
             <CardContent>
@@ -82,7 +117,7 @@ export function CommunityFeedView() {
           </Card>
         ))}
 
-        {posts?.length === 0 && (
+        {postsData.length === 0 && !isLoading && (
           <Box sx={{ textAlign: 'center', py: 10 }}>
             <Typography variant="h6" sx={{ color: 'text.secondary' }}>
               No posts yet. Start the conversation!

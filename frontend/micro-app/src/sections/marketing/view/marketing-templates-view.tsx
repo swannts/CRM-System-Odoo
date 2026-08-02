@@ -1,6 +1,12 @@
-'use client';
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchTemplates,
+  createTemplate,
+  duplicateTemplate,
+  deleteTemplate,
+  selectMarketing,
+} from 'src/store/slices/marketing-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -21,22 +27,29 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { Iconify } from 'src/components/iconify';
 import { showToast } from 'src/components/toast';
 
-import { useMarketingTemplates } from '../hooks/use-marketing';
-import { marketingService } from '../services/marketing-service';
 import { MarketingEmptyState, MarketingErrorState } from '../components/marketing-state-blocks';
 
 export function MarketingTemplatesView() {
-  const { data: templates = [], isLoading, error, refetch } = useMarketingTemplates();
+  const dispatch = useAppDispatch();
+  const { templates: templatesState } = useAppSelector(selectMarketing);
+
+  const templates = templatesState.data;
+  const isLoading = templatesState.loading;
+  const error = templatesState.error;
+
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    dispatch(fetchTemplates());
+  }, [dispatch]);
 
   const handleCreate = async () => {
     try {
       setCreating(true);
-      await marketingService.createTemplate({ name: 'New Template', type: 'email', content: '' });
+      await dispatch(createTemplate({ name: 'New Template', type: 'email', content: '' })).unwrap();
       showToast({ severity: 'success', message: 'Template created.' });
-      refetch();
     } catch (err: any) {
-      showToast({ severity: 'error', message: err?.response?.data?.message || 'Templates are not available yet.' });
+      showToast({ severity: 'error', message: err?.message || 'Templates are not available yet.' });
     } finally {
       setCreating(false);
     }
@@ -44,21 +57,19 @@ export function MarketingTemplatesView() {
 
   const handleDuplicate = async (id: string) => {
     try {
-      await marketingService.duplicateTemplate(id);
+      await dispatch(duplicateTemplate(id)).unwrap();
       showToast({ severity: 'success', message: 'Template duplicated.' });
-      refetch();
     } catch (err: any) {
-      showToast({ severity: 'error', message: err?.response?.data?.message || 'Duplicate is not available.' });
+      showToast({ severity: 'error', message: err?.message || 'Duplicate is not available.' });
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      await marketingService.deleteTemplate(id);
+      await dispatch(deleteTemplate(id)).unwrap();
       showToast({ severity: 'success', message: 'Template deleted.' });
-      refetch();
     } catch (err: any) {
-      showToast({ severity: 'error', message: err?.response?.data?.message || 'Delete is not available.' });
+      showToast({ severity: 'error', message: err?.message || 'Delete is not available.' });
     }
   };
 

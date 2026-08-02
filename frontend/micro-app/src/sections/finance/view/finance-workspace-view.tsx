@@ -1,10 +1,20 @@
 'use client';
 
 import { z as zod } from 'zod';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchBillingInvoices, 
+  fetchInvoiceById, 
+  fetchPayments, 
+  createInvoiceThunk, 
+  updateInvoiceThunk, 
+  postInvoiceThunk,
+  selectBilling 
+} from 'src/store/slices/billing-slice';
+import { fetchFinanceStats, selectFinance } from 'src/store/slices/finance-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -24,7 +34,6 @@ import { fCurrency } from 'src/utils/format-number';
 
 import { billingService } from 'src/services/billing-service';
 import { contactService } from 'src/services/contact-service';
-import { financeService } from 'src/services/finance-service';
 
 import { showToast } from 'src/components/toast';
 import { Form, RHFTextField } from 'src/components/hook-form';
@@ -49,10 +58,13 @@ type Props = {
 };
 
 export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Props) {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
   const router = useRouter();
   const searchParams = useSearchParams();
   const preFilledCustomerId = searchParams.get('customer');
+
+  const billingState = useAppSelector(selectBilling);
+  const financeState = useAppSelector(selectFinance);
 
   const [filters, setFilters] = useState({
     state: '',
@@ -75,111 +87,94 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
   const { reset, setValue } = methods;
 
   // Pre-fill customer logic
-  useQuery({
-    queryKey: ['pre-fill-customer', preFilledCustomerId],
-    queryFn: async () => {
-      const contact = await contactService.getContact(preFilledCustomerId!);
-      if (contact) {
-        setValue('partner_id', Number(contact.id));
-        setValue('customerName', contact.fullName);
-      }
-      return contact;
-    },
-    enabled: Boolean(preFilledCustomerId) && mode === 'new',
-  });
+  useEffect(() => {
+    if (preFilledCustomerId && mode === 'new') {
+      const fetchPreFill = async () => {
+        try {
+          const contact = await contactService.getContact(preFilledCustomerId);
+          if (contact) {
+            setValue('partner_id', Number(contact.id));
+            setValue('customerName', contact.fullName);
+          }
+        } catch (error) {
+          console.error('Failed to pre-fill customer', error);
+        }
+      };
+      fetchPreFill();
+    }
+  }, [preFilledCustomerId, mode, setValue]);
 
-  const invoiceQuery = useQuery({
-    queryKey: ['invoice', invoiceId],
-    queryFn: () => billingService.getInvoice(invoiceId!),
-    enabled: Boolean(invoiceId),
-  });
+  // Data fetching
+  useEffect(() => {
+    if (invoiceId) {
+      dispatch(fetchInvoiceById(invoiceId));
+    } else {
+      dispatch(fetchBillingInvoices({ 
+        ...filters, 
+        contactId: section === 'customer' ? (preFilledCustomerId || undefined) : undefined 
+      }));
+    }
 
-  const invoicesQuery = useQuery({
-    queryKey: ['invoice-list', section, filters],
-    queryFn: () => billingService.getInvoices({ ...filters, contactId: section === 'customer' ? preFilledCustomerId : undefined }),
-    enabled: !invoiceId,
-  });
+    if (section === 'payouts' || mode === 'receipt') {
+      dispatch(fetchPayments());
+    }
 
-  const paymentsQuery = useQuery({
-    queryKey: ['payments'],
-    queryFn: () => billingService.getPayments(),
-    enabled: section === 'payouts' || mode === 'receipt',
-  });
+    if (['overview', 'income', 'expense', 'pnl'].includes(section || 'overview')) {
+      dispatch(fetchFinanceStats());
+    }
+  }, [dispatch, invoiceId, section, filters, mode, preFilledCustomerId]);
 
-  const revenueQuery = useQuery({
-    queryKey: ['finance-summary'],
-    queryFn: () => financeService.getRevenueStats(),
-    enabled: ['overview', 'income', 'expense', 'pnl'].includes(section || 'overview'),
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async (values: any) => {
+  const handleSaveInvoice = async (values: any) => {
+    try {
       if (mode === 'edit' && invoiceId) {
         const updatePayload = {
           partner_id: values.partner_id,
           invoice_date_due: values.dueDate,
           narration: values.description || 'Invoice updated from dashboard',
         };
-        return billingService.updateInvoice(invoiceId, updatePayload);
+        await dispatch(updateInvoiceThunk({ id: invoiceId, data: updatePayload })).unwrap();
+        showToast({ message: 'Invoice updated successfully', severity: 'success' });
+      } else {
+        const payload = {
+          partner_id: values.partner_id,
+          invoice_date: new Date().toISOString().slice(0, 10),
+          invoice_date_due: values.dueDate,
+          move_type: 'out_invoice',
+          invoice_line_ids: [
+            [0, 0, {
+              name: values.description || 'Service Fee',
+              quantity: 1,
+              price_unit: values.totalAmount,
+            }]
+          ]
+        };
+        await dispatch(createInvoiceThunk(payload)).unwrap();
+        showToast({ message: 'Invoice created successfully', severity: 'success' });
       }
-
-      // Odoo create payload
-      const payload = {
-        partner_id: values.partner_id,
-        invoice_date: new Date().toISOString().slice(0, 10),
-        invoice_date_due: values.dueDate,
-        move_type: 'out_invoice',
-        invoice_line_ids: [
-          [0, 0, {
-            name: values.description || 'Service Fee',
-            quantity: 1,
-            price_unit: values.totalAmount,
-          }]
-        ]
-      };
-
-      return billingService.createInvoice(payload);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['invoice-list'] });
-      showToast({
-        message: mode === 'edit' ? 'Invoice updated successfully' : 'Invoice created successfully',
-        severity: 'success',
-      });
       router.push(paths.dashboard.billing);
-    },
-    onError: (error: any) => {
-      console.error(error);
-      showToast({
-        message: error.message || 'Failed to save invoice',
-        severity: 'error',
-      });
-    },
-  });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to save invoice', severity: 'error' });
+    }
+  };
 
-  const postMutation = useMutation({
-    mutationFn: async () => {
-      if (!invoiceId) throw new Error('Invoice ID is required');
-      return billingService.postInvoice(invoiceId);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
-      await queryClient.invalidateQueries({ queryKey: ['invoice-list'] });
+  const handlePostInvoice = async () => {
+    if (!invoiceId) return;
+    try {
+      await dispatch(postInvoiceThunk(invoiceId)).unwrap();
       showToast({ message: 'Invoice posted successfully.', severity: 'success' });
-    },
-    onError: (error: any) => {
-      showToast({ message: error?.message || 'Failed to post invoice', severity: 'error' });
-    },
-  });
+    } catch (error: any) {
+      showToast({ message: error || 'Failed to post invoice', severity: 'error' });
+    }
+  };
 
   const handleDownloadInvoice = async () => {
-    if (!invoiceId || !invoice) return;
+    if (!invoiceId || !billingState.currentInvoice.data) return;
     try {
       const blob = await billingService.downloadInvoice(invoiceId);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${invoice.no || `invoice-${invoiceId}`}.pdf`;
+      link.download = `${billingState.currentInvoice.data.no || `invoice-${invoiceId}`}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -215,7 +210,10 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
     { href: paths.dashboard.financeSection('pnl'), label: 'P&L' },
   ];
 
-  if (invoiceId && invoiceQuery.isLoading) {
+  const currentInvoice = billingState.currentInvoice.data;
+  const currentInvoiceLoading = billingState.currentInvoice.loading;
+
+  if (invoiceId && currentInvoiceLoading) {
     return (
       <Box sx={{ py: 8, textAlign: 'center' }}>
         <LinearProgress />
@@ -223,9 +221,7 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
     );
   }
 
-  const invoice = invoiceQuery.data;
-
-  if (invoice && (mode === 'preview' || mode === 'print' || mode === 'payment' || mode === 'confirm' || mode === 'receipt')) {
+  if (currentInvoice && (mode === 'preview' || mode === 'print' || mode === 'payment' || mode === 'confirm' || mode === 'receipt')) {
     return (
       <FeatureRouteShell
         title={title}
@@ -234,23 +230,23 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
       >
         <Card sx={{ p: 4 }}>
           <Stack spacing={2}>
-            <Typography variant="h5">Invoice #{invoice.no || invoice._id}</Typography>
+            <Typography variant="h5">Invoice #{currentInvoice.no || (currentInvoice as any)._id || currentInvoice.id}</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Customer: {invoice.customerName || invoice.billTo || 'Unknown'}
+              Customer: {currentInvoice.customerName || (currentInvoice as any).billTo || 'Unknown'}
             </Typography>
-            <Typography variant="body2">Status: {invoice.status || 'Draft'}</Typography>
+            <Typography variant="body2">Status: {currentInvoice.status || 'Draft'}</Typography>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="h4">{fCurrency(invoice.totalDue || invoice.totalAmount || 0)}</Typography>
-              {invoice.isOverdue && (
+              <Typography variant="h4">{fCurrency(currentInvoice.totalDue || currentInvoice.totalAmount || 0)}</Typography>
+              {(currentInvoice as any).isOverdue && (
                 <Label color="error" variant="filled">OVERDUE</Label>
               )}
             </Stack>
 
-            {invoice.lines && invoice.lines.length > 0 && (
+            {(currentInvoice as any).lines && (currentInvoice as any).lines.length > 0 && (
               <Box sx={{ mt: 3 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Line Items</Typography>
                 <Stack spacing={1.5} divider={<Divider sx={{ borderStyle: 'dashed' }} />}>
-                  {invoice.lines.map((line: any) => (
+                  {(currentInvoice as any).lines.map((line: any) => (
                     <Stack key={line.id} direction="row" justifyContent="space-between" alignItems="center">
                       <Box>
                         <Typography variant="body2">{line.name}</Typography>
@@ -265,11 +261,10 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
               </Box>
             )}
             <Stack direction="row" spacing={1}>
-              {String(invoice.status || '').toLowerCase() === 'draft' && (
+              {String(currentInvoice.status || '').toLowerCase() === 'draft' && (
                 <Button
                   variant="contained"
-                  onClick={() => postMutation.mutate()}
-                  disabled={postMutation.isPending}
+                  onClick={handlePostInvoice}
                 >
                   Post Invoice
                 </Button>
@@ -287,7 +282,7 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
             )}
             {mode === 'receipt' && (
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Recent payment records: {(paymentsQuery.data || []).length}
+                Recent payment records: {billingState.payments.data.length}
               </Typography>
             )}
           </Stack>
@@ -298,14 +293,14 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
 
   if (mode === 'new' || mode === 'edit') {
     const defaultValues = {
-      partner_id: invoice?.partner_id?.[0] || 0,
-      customerName: invoice?.partner_id?.[1] || invoice?.customerName || '',
-      totalAmount: invoice?.amount_total || invoice?.totalAmount || 0,
-      dueDate: invoice?.invoice_date_due || invoice?.dueDate || new Date().toISOString().slice(0, 10),
+      partner_id: (currentInvoice as any)?.partner_id?.[0] || 0,
+      customerName: (currentInvoice as any)?.partner_id?.[1] || currentInvoice?.customerName || '',
+      totalAmount: (currentInvoice as any)?.amount_total || currentInvoice?.totalAmount || 0,
+      dueDate: (currentInvoice as any)?.invoice_date_due || currentInvoice?.dueDate || new Date().toISOString().slice(0, 10),
       description: 'Invoice for services',
     };
 
-    if (methods.getValues('customerName') !== defaultValues.customerName && invoice) {
+    if (methods.getValues('customerName') !== defaultValues.customerName && currentInvoice) {
       reset(defaultValues);
     }
 
@@ -316,7 +311,7 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
         links={links}
       >
         <Card sx={{ p: 3 }}>
-          <Form methods={methods} onSubmit={methods.handleSubmit((values) => saveMutation.mutate(values))}>
+          <Form methods={methods} onSubmit={methods.handleSubmit(handleSaveInvoice)}>
             <Stack spacing={3}>
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>Customer</Typography>
@@ -335,17 +330,16 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
                 value={methods.watch('dueDate')}
                 onChange={(event) => setValue('dueDate', event.target.value, { shouldValidate: true })}
               />
-              <Button type="submit" variant="contained" disabled={saveMutation.isPending}>
+              <Button type="submit" variant="contained">
                 {mode === 'edit' ? 'Save Invoice' : 'Create Invoice'}
               </Button>
               {mode === 'edit' && (
                 <Stack direction="row" spacing={1}>
-                  {String(invoice?.status || '').toLowerCase() === 'draft' && (
+                  {String(currentInvoice?.status || '').toLowerCase() === 'draft' && (
                     <Button
                       variant="soft"
                       color="success"
-                      onClick={() => postMutation.mutate()}
-                      disabled={postMutation.isPending}
+                      onClick={handlePostInvoice}
                     >
                       Post Invoice
                     </Button>
@@ -428,15 +422,19 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
             </Stack>
             <Stack spacing={2}>
               {(() => {
-                const data = section === 'payouts' ? paymentsQuery.data : (invoicesQuery.data as any)?.data;
-                const list = Array.isArray(data) ? data : [];
+                const list = section === 'payouts' ? billingState.payments.data : billingState.invoices.data;
+                const isLoading = section === 'payouts' ? billingState.payments.loading : billingState.invoices.loading;
                 
-                if (list.length === 0 && !invoicesQuery.isLoading && !paymentsQuery.isLoading) {
+                if (list.length === 0 && !isLoading) {
                   return (
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                       No records are available for this finance route yet.
                     </Typography>
                   );
+                }
+
+                if (isLoading) {
+                  return <LinearProgress />;
                 }
 
                 return list.map((item: any) => (
@@ -489,8 +487,8 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
               <Typography variant="h6" sx={{ mb: 2 }}>
                 Summary
               </Typography>
-              {revenueQuery.isLoading ? (
-                <LinearProgress size={24} />
+              {financeState.stats.loading ? (
+                <LinearProgress />
               ) : (
                 <Stack spacing={1.5}>
                   <Typography variant="body2">Reported metrics are sourced from the current finance APIs.</Typography>
@@ -498,24 +496,24 @@ export function FinanceWorkspaceView({ section, invoiceId, mode = 'list' }: Prop
                   <Stack spacing={2} sx={{ mt: 1 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>Total Revenue</Typography>
-                      <Typography variant="subtitle2">{fCurrency(revenueQuery.data?.totalRevenue || 0)}</Typography>
+                      <Typography variant="subtitle2">{fCurrency(financeState.stats.data?.totalRevenue || 0)}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>Paid</Typography>
-                      <Typography variant="subtitle2" sx={{ color: 'success.main' }}>{fCurrency(revenueQuery.data?.paid || 0)}</Typography>
+                      <Typography variant="subtitle2" sx={{ color: 'success.main' }}>{fCurrency(financeState.stats.data?.paid || 0)}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>Outstanding</Typography>
-                      <Typography variant="subtitle2" sx={{ color: 'warning.main' }}>{fCurrency(revenueQuery.data?.outstanding || 0)}</Typography>
+                      <Typography variant="subtitle2" sx={{ color: 'warning.main' }}>{fCurrency(financeState.stats.data?.outstanding || 0)}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>Overdue</Typography>
-                      <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>{fCurrency(revenueQuery.data?.overdue || 0)}</Typography>
+                      <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>{fCurrency(financeState.stats.data?.overdue || 0)}</Typography>
                     </Box>
                     <Divider sx={{ borderStyle: 'dashed' }} />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>Invoice Count</Typography>
-                      <Typography variant="subtitle2">{revenueQuery.data?.invoiceCount || 0}</Typography>
+                      <Typography variant="subtitle2">{financeState.stats.data?.invoiceCount || 0}</Typography>
                     </Box>
                   </Stack>
                 </Stack>

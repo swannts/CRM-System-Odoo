@@ -1,6 +1,13 @@
 'use client';
 
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchAffiliateEarningsThunk, 
+  fetchAffiliateReceiptsThunk, 
+  sendAffiliateInvitationThunk,
+  selectAffiliate 
+} from 'src/store/slices/affiliate-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -20,52 +27,52 @@ import TableContainer from '@mui/material/TableContainer';
 import { fDate } from 'src/utils/format-time';
 import { fCurrency } from 'src/utils/format-number';
 
-import { affiliateService } from 'src/services/affiliate-service';
-
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function AffiliateEarnings() {
-  const { data: earnings } = useQuery({
-    queryKey: ['affiliate-earnings'],
-    queryFn: () => affiliateService.getEarnings(),
-  });
+  const dispatch = useAppDispatch();
+  const { earnings, receipts } = useAppSelector(selectAffiliate);
+  const [isInvitationPending, setIsInvitationPending] = useState(false);
 
-  const { data: receipts } = useQuery({
-    queryKey: ['affiliate-receipts'],
-    queryFn: () => affiliateService.getPaymentReceipts(),
-  });
+  useEffect(() => {
+    dispatch(fetchAffiliateEarningsThunk());
+    dispatch(fetchAffiliateReceiptsThunk());
+  }, [dispatch]);
 
-  const inviteMutation = useMutation({
-    mutationFn: (email: string) => affiliateService.sendInvitation(email),
-    onSuccess: () => {
-      toast.success('Invitation sent successfully!');
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to send invitation');
-    },
-  });
-
-  const handleInviteSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleInviteSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const email = formData.get('email') as string;
-    if (email) inviteMutation.mutate(email);
+    if (!email) return;
+
+    try {
+      setIsInvitationPending(true);
+      await dispatch(sendAffiliateInvitationThunk(email)).unwrap();
+      toast.success('Invitation sent successfully!');
+      (event.target as HTMLFormElement).reset();
+    } catch (err) {
+      toast.error(err || 'Failed to send invitation');
+    } finally {
+      setIsInvitationPending(false);
+    }
   };
+
+  const earningsData = (earnings.data as any) || {};
 
   return (
     <Stack spacing={3}>
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
-          <SummaryCard title="Total Earned" value={earnings?.totalEarned || 0} icon="solar:wad-of-money-bold-duotone" color="success" />
+          <SummaryCard title="Total Earned" value={earningsData.totalEarned || 0} icon="solar:wad-of-money-bold-duotone" color="success" />
         </Grid>
         <Grid item xs={12} md={4}>
-          <SummaryCard title="Pending Payout" value={earnings?.pendingPayout || 0} icon="solar:clock-circle-bold-duotone" color="warning" />
+          <SummaryCard title="Pending Payout" value={earningsData.pendingPayout || 0} icon="solar:clock-circle-bold-duotone" color="warning" />
         </Grid>
         <Grid item xs={12} md={4}>
-          <SummaryCard title="Conversion Rate" value={`${earnings?.conversionRate || 0}%`} icon="solar:chart-2-bold-duotone" color="info" isCurrency={false} />
+          <SummaryCard title="Conversion Rate" value={`${earningsData.conversionRate || 0}%`} icon="solar:chart-2-bold-duotone" color="info" isCurrency={false} />
         </Grid>
       </Grid>
 
@@ -105,7 +112,7 @@ export function AffiliateEarnings() {
             <form onSubmit={handleInviteSubmit}>
               <Stack spacing={2}>
                 <TextField fullWidth name="email" label="Email Address" placeholder="friend@example.com" />
-                <Button fullWidth variant="contained" type="submit" disabled={inviteMutation.isPending}>
+                <Button fullWidth variant="contained" type="submit" disabled={isInvitationPending}>
                   Send Invitation
                 </Button>
               </Stack>
@@ -138,7 +145,7 @@ export function AffiliateEarnings() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(receipts || []).map((row: any) => (
+              {receipts.data.map((row: any) => (
                 <TableRow key={row.id}>
                   <TableCell>{fDate(row.date)}</TableCell>
                   <TableCell>{row.receiptId}</TableCell>
@@ -166,7 +173,7 @@ export function AffiliateEarnings() {
                   </TableCell>
                 </TableRow>
               ))}
-              {(receipts || []).length === 0 && (
+              {receipts.data.length === 0 && !receipts.loading && (
                 <TableRow>
                   <TableCell colSpan={5} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
                     No payment receipts found.

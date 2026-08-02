@@ -1,7 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOrgAccessUsersThunk, 
+  fetchOrgRbacCatalogThunk, 
+  upsertOrgMembershipThunk, 
+  removeOrgMembershipThunk, 
+  syncOrgMembershipToKeycloakThunk, 
+  createOrgKeycloakUserThunk,
+  selectOrganization 
+} from 'src/store/slices/organization-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -21,10 +30,8 @@ import LoadingButton from '@mui/lab/LoadingButton';
 import TableContainer from '@mui/material/TableContainer';
 import InputAdornment from '@mui/material/InputAdornment';
 
-import { organizationService } from 'src/services/organization-service';
-
 import { Iconify } from 'src/components/iconify';
-import { showToast } from 'src/components/toast';
+import { toast } from 'src/components/snackbar';
 
 type Drafts = Record<string, {
   role: string;
@@ -32,69 +39,100 @@ type Drafts = Record<string, {
 }>;
 
 export function OrganizationUserManagementView() {
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
+  const { accessUsers, rbacCatalog } = useAppSelector(selectOrganization);
+
   const [search, setSearch] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState('customer');
   const [drafts, setDrafts] = useState<Drafts>({});
+  const [isMutationPending, setIsMutationPending] = useState(false);
 
-  const { data: catalog, error: catalogError } = useQuery({
-    queryKey: ['org-rbac-catalog'],
-    queryFn: () => organizationService.getRbacCatalog(),
-  });
+  useEffect(() => {
+    dispatch(fetchOrgRbacCatalogThunk());
+    dispatch(fetchOrgAccessUsersThunk({ search }));
+  }, [dispatch, search]);
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ['org-access-users', search],
-    queryFn: () => organizationService.getAccessUsers({ search }),
-  });
+  const catalog = rbacCatalog.data;
+  const users = accessUsers.data || [];
+  const isLoading = accessUsers.loading;
 
   const businessRoles = Array.isArray(catalog?.businessRoles) ? catalog.businessRoles : [];
   const roleOptions = businessRoles.map((role: any) => role.keycloakRole);
 
-  const saveMutation = useMutation({
-    mutationFn: (payload: any) => organizationService.upsertMembership(payload.userId, payload.body),
-    onSuccess: async () => {
-      showToast({ message: 'User access updated.', severity: 'success' });
-      await queryClient.invalidateQueries({ queryKey: ['org-access-users'] });
-      await queryClient.invalidateQueries({ queryKey: ['org-membership'] });
-    },
-    onError: (error: any) => {
-      showToast({ message: error?.message || 'Failed to update membership', severity: 'warning' });
-    },
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: (userId: string) => organizationService.removeMembership(userId),
-    onSuccess: async () => {
-      showToast({ message: 'User removed from organization.', severity: 'success' });
-      await queryClient.invalidateQueries({ queryKey: ['org-access-users'] });
-    },
-    onError: (error: any) => {
-      showToast({ message: error?.message || 'Failed to remove membership', severity: 'warning' });
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: (userId: string) => organizationService.syncMembershipToKeycloak(userId),
-    onSuccess: () => {
-      showToast({ message: 'Synced to Keycloak.', severity: 'success' });
-    },
-    onError: (error: any) => {
-      showToast({ message: error?.message || 'Failed syncing with Keycloak', severity: 'warning' });
-    },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (body: any) => organizationService.createKeycloakUser(body),
-    onSuccess: async () => {
-      showToast({ message: 'User created and assigned.', severity: 'success' });
+  const handleCreateUser = async () => {
+    if (!newUserEmail.trim()) return;
+    try {
+      setIsMutationPending(true);
+      await dispatch(createOrgKeycloakUserThunk({
+        email: newUserEmail,
+        role: newUserRole,
+        metadata: {
+          integrationRoles: {
+            odoo: 'odoo_viewer',
+            magento: 'magento_viewer',
+          },
+        },
+      })).unwrap();
       setNewUserEmail('');
-      await queryClient.invalidateQueries({ queryKey: ['org-access-users'] });
-    },
-    onError: (error: any) => {
-      showToast({ message: error?.message || 'Failed creating user', severity: 'warning' });
-    },
-  });
+      dispatch(fetchOrgAccessUsersThunk({ search }));
+      toast.success('User created and assigned');
+    } catch (err) {
+      toast.error(err || 'Failed creating user');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
+
+  const handleSaveMembership = async (userId: string, row: any) => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(upsertOrgMembershipThunk({
+        userId,
+        body: {
+          role: row.role,
+          permissions: String(row.permissionsCsv || '')
+            .split(',')
+            .map((item: string) => item.trim())
+            .filter(Boolean),
+          metadata: {
+            integrationRoles: {},
+          },
+        },
+      })).unwrap();
+      dispatch(fetchOrgAccessUsersThunk({ search }));
+      toast.success('User access updated');
+    } catch (err) {
+      toast.error(err || 'Failed to update membership');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
+
+  const handleRemoveUser = async (userId: string) => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(removeOrgMembershipThunk(userId)).unwrap();
+      dispatch(fetchOrgAccessUsersThunk({ search }));
+      toast.success('User removed from organization');
+    } catch (err) {
+      toast.error(err || 'Failed to remove membership');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
+
+  const handleSyncUser = async (userId: string) => {
+    try {
+      setIsMutationPending(true);
+      await dispatch(syncOrgMembershipToKeycloakThunk(userId)).unwrap();
+      toast.success('Synced to Keycloak');
+    } catch (err) {
+      toast.error(err || 'Failed syncing with Keycloak');
+    } finally {
+      setIsMutationPending(false);
+    }
+  };
 
   const rows = useMemo(
     () =>
@@ -109,7 +147,7 @@ export function OrganizationUserManagementView() {
     [users, drafts]
   );
 
-  if (catalogError) {
+  if (rbacCatalog.error) {
     return (
       <Alert severity="warning">
         Only organization owners can manage users, roles, and integration permissions.
@@ -137,20 +175,10 @@ export function OrganizationUserManagementView() {
               ))}
             </Select>
             <LoadingButton
-              loading={createMutation.isPending}
+              loading={isMutationPending}
               variant="contained"
-              onClick={() =>
-                createMutation.mutate({
-                  email: newUserEmail,
-                  role: newUserRole,
-                  metadata: {
-                    integrationRoles: {
-                      odoo: 'odoo_viewer',
-                      magento: 'magento_viewer',
-                    },
-                  },
-                })
-              }
+              onClick={handleCreateUser}
+              disabled={!newUserEmail.trim()}
             >
               Create User
             </LoadingButton>
@@ -216,7 +244,7 @@ export function OrganizationUserManagementView() {
                         }))
                       }
                     >
-                      {Array.from(new Set([row.role, ...roleOptions])).map((role: string) => (
+                      {Array.from(new Set([row.role, ...roleOptions])).map((role: any) => (
                         <MenuItem key={role} value={role}>
                           {role}
                         </MenuItem>
@@ -253,38 +281,24 @@ export function OrganizationUserManagementView() {
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
                       <LoadingButton
                         size="small"
-                        loading={saveMutation.isPending}
+                        loading={isMutationPending}
                         variant="contained"
-                        onClick={() =>
-                          saveMutation.mutate({
-                            userId: row.userId,
-                            body: {
-                              role: row.role,
-                              permissions: String(row.permissionsCsv || '')
-                                .split(',')
-                                .map((item) => item.trim())
-                                .filter(Boolean),
-                              metadata: {
-                                integrationRoles: {},
-                              },
-                            },
-                          })
-                        }
+                        onClick={() => handleSaveMembership(row.userId, row)}
                       >
                         Save
                       </LoadingButton>
                       <Button
                         size="small"
-                        onClick={() => syncMutation.mutate(row.userId)}
-                        disabled={syncMutation.isPending}
+                        onClick={() => handleSyncUser(row.userId)}
+                        disabled={isMutationPending}
                       >
                         Sync
                       </Button>
                       <Button
                         size="small"
                         color="error"
-                        onClick={() => removeMutation.mutate(row.userId)}
-                        disabled={removeMutation.isPending}
+                        onClick={() => handleRemoveUser(row.userId)}
+                        disabled={isMutationPending}
                       >
                         Remove
                       </Button>

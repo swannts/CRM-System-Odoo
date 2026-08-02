@@ -5,5 +5,5 @@ export const metadata = {
 };
 
 export default function Page() {
-  return <DeviceWorkspaceView mode="devices" />;
+  return <DeviceWorkspaceView mode="list" />;
 }

@@ -1,7 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { 
+  fetchOmniChatbots, 
+  fetchOmniTriggersThunk,
+  selectOmnichannel 
+} from 'src/store/slices/omnichannel-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -17,25 +22,24 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniAutomationService } from 'src/services/omni-service';
-
 import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
 export function OmniAutomationView() {
+  const dispatch = useAppDispatch();
+  const { chatbots, triggers } = useAppSelector(selectOmnichannel);
   const [currentTab, setCurrentTab] = useState('chatbots');
-  const queryClient = useQueryClient();
 
-  const { data: chatbots, isLoading: chatbotsLoading } = useQuery({
-    queryKey: ['omni-chatbots'],
-    queryFn: () => omniAutomationService.getChatbots(),
-  });
+  useEffect(() => {
+    dispatch(fetchOmniChatbots());
+    dispatch(fetchOmniTriggersThunk());
+  }, [dispatch]);
 
-  const { data: triggers, isLoading: triggersLoading } = useQuery({
-    queryKey: ['omni-triggers'],
-    queryFn: () => omniAutomationService.getTriggers(),
-  });
+  const chatbotsList = chatbots.data || [];
+  const triggersList = triggers.data || [];
+  const chatbotsLoading = chatbots.loading;
+  const triggersLoading = triggers.loading;
 
   return (
     <DashboardContent maxWidth="xl">
@@ -59,8 +63,8 @@ export function OmniAutomationView() {
 
       {currentTab === 'chatbots' && (
         <Stack spacing={3}>
-           {chatbotsLoading && <CircularProgress />}
-           {(chatbots || []).map((bot: any) => (
+           {chatbotsLoading && !chatbotsList.length && <CircularProgress />}
+           {chatbotsList.map((bot: any) => (
              <Card key={bot.id} sx={{ p: 3 }}>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                    <Stack direction="row" spacing={2} alignItems="center">
@@ -91,16 +95,16 @@ export function OmniAutomationView() {
 
       {currentTab === 'triggers' && (
         <Stack spacing={3}>
-           {triggersLoading && <CircularProgress />}
-           {(triggers || []).map((trigger: any) => (
+           {triggersLoading && !triggersList.length && <CircularProgress />}
+           {triggersList.map((trigger: any) => (
              <Card key={trigger.id} sx={{ p: 3 }}>
                 <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
-                   <Chip label={trigger.matchType} color="info" variant="soft" size="small" />
+                   <CustomChip label={trigger.matchType} color="info" />
                    <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>Keyword: "{trigger.keyword}"</Typography>
                    <FormControlLabel control={<Switch checked={trigger.isActive} />} label="" />
                 </Stack>
                 <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-                  Executes workflow: <Typography component="span" variant="subtitle2" color="primary">{trigger.workflowId}</Typography>
+                   Executes workflow: <Typography component="span" variant="subtitle2" color="primary">{trigger.workflowId}</Typography>
                 </Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                    <Button variant="soft" color="error" size="small">Delete</Button>
@@ -117,11 +121,21 @@ export function OmniAutomationView() {
   );
 }
 
-// Minimal Chip mock if not available
-function Chip({ label, color, variant, size }: any) {
-    return <Box sx={{ 
-        px: 1, py: 0.5, borderRadius: 1, fontSize: 12, fontWeight: 'bold',
-        bgcolor: color === 'info' ? 'info.lighter' : 'grey.200',
-        color: color === 'info' ? 'info.dark' : 'grey.800'
-    }}>{label}</Box>;
+function CustomChip({ label, color }: any) {
+    return (
+      <Box 
+        sx={{ 
+          px: 1, 
+          py: 0.5, 
+          borderRadius: 1, 
+          fontSize: 12, 
+          fontWeight: 'bold',
+          bgcolor: color === 'info' ? 'info.lighter' : 'grey.200',
+          color: color === 'info' ? 'info.dark' : 'grey.800',
+          display: 'inline-flex'
+        }}
+      >
+        {label}
+      </Box>
+    );
 }

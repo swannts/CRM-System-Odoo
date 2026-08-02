@@ -13,7 +13,23 @@ import { NavUpgrade } from '../components/nav-upgrade';
 
 // ----------------------------------------------------------------------
 
-export function NavMobile({ data, open, onClose, slots, sx, ...other }) {
+import type { SxProps, Theme } from '@mui/material/styles';
+
+// ----------------------------------------------------------------------
+
+type Props = {
+  data: any[];
+  open: boolean;
+  onClose: () => void;
+  slots?: {
+    topArea?: React.ReactNode;
+    bottomArea?: React.ReactNode;
+  };
+  sx?: SxProps<Theme>;
+  [key: string]: any;
+};
+
+export function NavMobile({ data, open, onClose, slots, sx, ...other }: Props) {
   const pathname = usePathname();
 
   useEffect(() => {

@@ -5,8 +5,20 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import listPlugin from '@fullcalendar/list';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { useState, useCallback, useMemo } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchCalendarEvents,
+  fetchCalendarSummary,
+  fetchBookingLinks,
+  fetchAvailability,
+  fetchReminders,
+  fetchCalendarSettings,
+  createCalendarEventThunk,
+  updateCalendarEventThunk,
+  deleteCalendarEventThunk,
+  selectCalendar,
+} from 'src/store/slices/calendar-slice';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -17,7 +29,6 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
-import Divider from '@mui/material/Divider';
 import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -27,17 +38,15 @@ import Container from '@mui/material/Container';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useResponsive } from 'src/hooks/use-responsive';
-import { fDate, fDateTime } from 'src/utils/format-time';
+import { fDateTime } from 'src/utils/format-time';
 
-import { calendarService, CalendarUnavailableError } from 'src/services/calendar-service';
 import { Iconify } from 'src/components/iconify';
 
 import { useCalendar } from '../hooks/use-calendar';
 import { StyledCalendar } from '../styles';
 import CalendarToolbar from '../calendar-toolbar';
 import CalendarForm from '../calendar-form';
-import { CalendarEmptyState, CalendarErrorState, CalendarUnavailableState } from '../components/calendar-states';
+import { CalendarEmptyState, CalendarUnavailableState } from '../components/calendar-states';
 
 // ----------------------------------------------------------------------
 
@@ -46,8 +55,7 @@ type TabType = (typeof TABS)[number];
 
 export function CalendarView() {
   const [tab, setTab] = useState<TabType>('calendar');
-  const queryClient = useQueryClient();
-  const smUp = useResponsive('up', 'sm');
+  const dispatch = useAppDispatch();
 
   const openForm = useBoolean();
   const [selectedEventId, setSelectedEventId] = useState('');
@@ -62,37 +70,27 @@ export function CalendarView() {
     onChangeView,
   } = useCalendar();
 
-  // Queries
-  const eventsQuery = useQuery({ queryKey: ['calendar-events'], queryFn: () => calendarService.getEvents({ page: 1, pageSize: 300 }) });
-  const summaryQuery = useQuery({ queryKey: ['calendar-summary'], queryFn: () => calendarService.getCalendarSummary() });
-  const bookingLinksQuery = useQuery({ queryKey: ['calendar-booking-links'], queryFn: () => calendarService.getBookingLinks(), enabled: tab === 'booking_links' });
-  const availabilityQuery = useQuery({ queryKey: ['calendar-availability'], queryFn: () => calendarService.getAvailability(), enabled: tab === 'availability' });
-  const remindersQuery = useQuery({ queryKey: ['calendar-reminders'], queryFn: () => calendarService.getReminders(), enabled: tab === 'reminders' });
-  const settingsQuery = useQuery({ queryKey: ['calendar-settings'], queryFn: () => calendarService.getCalendarSettings(), enabled: tab === 'settings' });
+  const calendarState = useAppSelector(selectCalendar);
 
-  // Mutations
-  const createEventMutation = useMutation({
-    mutationFn: (payload: any) => calendarService.createEvent(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-summary'] });
-    },
-  });
+  useEffect(() => {
+    dispatch(fetchCalendarEvents());
+    dispatch(fetchCalendarSummary());
+  }, [dispatch]);
 
-  const updateEventMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: any }) => calendarService.updateEvent(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-    },
-  });
+  useEffect(() => {
+    if (tab === 'booking_links') dispatch(fetchBookingLinks());
+    if (tab === 'availability') dispatch(fetchAvailability());
+    if (tab === 'reminders') dispatch(fetchReminders());
+    if (tab === 'settings') dispatch(fetchCalendarSettings());
+  }, [dispatch, tab]);
 
-  const deleteEventMutation = useMutation({
-    mutationFn: (id: string) => calendarService.deleteEvent(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-summary'] });
-    },
-  });
+  // Map Redux state to query-like objects
+  const eventsQuery = { data: { data: calendarState.events.data }, isLoading: calendarState.events.loading };
+  const summaryQuery = { data: calendarState.summary.data, isLoading: calendarState.summary.loading };
+  const bookingLinksQuery = { data: calendarState.bookingLinks.data, isLoading: calendarState.bookingLinks.loading, isError: !!calendarState.bookingLinks.error };
+  const availabilityQuery = { data: calendarState.availability.data, isLoading: calendarState.availability.loading, isError: !!calendarState.availability.error };
+  const remindersQuery = { data: calendarState.reminders.data, isLoading: calendarState.reminders.loading, isError: !!calendarState.reminders.error };
+  const settingsQuery = { data: calendarState.settings.data, isLoading: calendarState.settings.loading, isError: !!calendarState.settings.error };
 
   // Mapped Events for FullCalendar
   const dataFiltered = useMemo(
@@ -132,7 +130,7 @@ export function CalendarView() {
   );
 
   const handleSelectRange = useCallback(
-    (arg: any) => {
+    () => {
       onOpenForm();
       setSelectedEventId('');
     },
@@ -195,7 +193,6 @@ export function CalendarView() {
               editable
               droppable
               selectable
-              rerenderEvents
               initialDate={date}
               initialView={view}
               dayMaxEventRows={3}
@@ -302,9 +299,9 @@ export function CalendarView() {
         <CalendarForm
           event={selectedEvent}
           onClose={onCloseForm}
-          onCreate={(data) => createEventMutation.mutate(data)}
-          onUpdate={(id, data) => updateEventMutation.mutate({ id, payload: data })}
-          onDelete={(id) => deleteEventMutation.mutate(id)}
+          onCreate={(data) => dispatch(createCalendarEventThunk(data))}
+          onUpdate={(id, data) => dispatch(updateCalendarEventThunk({ id, payload: data }))}
+          onDelete={(id) => dispatch(deleteCalendarEventThunk(id))}
         />
       </Dialog>
     </Container>

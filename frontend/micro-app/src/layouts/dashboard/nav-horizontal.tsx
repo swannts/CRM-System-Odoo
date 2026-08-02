@@ -7,7 +7,18 @@ import { NavSectionHorizontal } from 'src/components/nav-section';
 
 // ----------------------------------------------------------------------
 
-export function NavHorizontal({ data, layoutQuery, sx, ...other }) {
+import type { SxProps, Theme } from '@mui/material/styles';
+
+// ----------------------------------------------------------------------
+
+type Props = {
+  data: any[];
+  layoutQuery: string;
+  sx?: SxProps<Theme>;
+  [key: string]: any;
+};
+
+export function NavHorizontal({ data, layoutQuery, sx, ...other }: Props) {
   return (
     <Box
       sx={{

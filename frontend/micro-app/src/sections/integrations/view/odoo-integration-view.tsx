@@ -1,6 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchContacts,
+  fetchCompanies,
+  fetchLeads,
+  fetchOpportunities,
+  fetchInvoices,
+  fetchSalesOrders,
+  fetchProducts,
+  fetchInventory,
+  fetchOdooConnection,
+} from 'src/store/slices/odoo-slice';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -21,15 +33,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import {
   useConnectOdooMutation,
   useDisconnectOdooMutation,
-  useOdooCompanies,
-  useOdooConnection,
-  useOdooContacts,
-  useOdooInventory,
-  useOdooInvoices,
-  useOdooLeads,
-  useOdooOpportunities,
-  useOdooProducts,
-  useOdooSalesOrders,
   useSyncMagentoCustomersToOdooMutation,
   useSyncMagentoOrdersToOdooMutation,
 } from 'src/hooks/use-odoo';
@@ -54,6 +57,7 @@ function summarizeItems(items: unknown[] | undefined, count = 5): string[] {
 }
 
 export function OdooIntegrationView() {
+  const dispatch = useAppDispatch();
   const [previewTab, setPreviewTab] = useState<PreviewTab>('contacts');
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [pendingSyncAction, setPendingSyncAction] = useState<SyncAction | null>(null);
@@ -67,54 +71,59 @@ export function OdooIntegrationView() {
     apiKey: '',
   });
 
-  const connectionQuery = useOdooConnection();
-  const contactsQuery = useOdooContacts({ page: 1, pageSize: 20 });
-  const companiesQuery = useOdooCompanies({ page: 1, pageSize: 20 });
-  const leadsQuery = useOdooLeads({ page: 1, pageSize: 20 });
-  const opportunitiesQuery = useOdooOpportunities({ page: 1, pageSize: 20 });
-  const invoicesQuery = useOdooInvoices({ page: 1, pageSize: 20 });
-  const salesOrdersQuery = useOdooSalesOrders({ page: 1, pageSize: 20 });
-  const productsQuery = useOdooProducts({ page: 1, pageSize: 20 });
-  const inventoryQuery = useOdooInventory({ page: 1, pageSize: 20 });
+  const odooState = useAppSelector((state) => state.odoo);
+  const { connection, contacts, companies, leads, opportunities, invoices, salesOrders, products, inventory } = odooState;
+
+  useEffect(() => {
+    dispatch(fetchOdooConnection());
+    dispatch(fetchContacts({ page: 1, pageSize: 20 }));
+    dispatch(fetchCompanies({ page: 1, pageSize: 20 }));
+    dispatch(fetchLeads({ page: 1, pageSize: 20 }));
+    dispatch(fetchOpportunities({ page: 1, pageSize: 20 }));
+    dispatch(fetchInvoices({ page: 1, pageSize: 20 }));
+    dispatch(fetchSalesOrders({ page: 1, pageSize: 20 }));
+    dispatch(fetchProducts({ page: 1, pageSize: 20 }));
+    dispatch(fetchInventory({ page: 1, pageSize: 20 }));
+  }, [dispatch]);
 
   const connectMutation = useConnectOdooMutation();
   const disconnectMutation = useDisconnectOdooMutation();
   const syncCustomersMutation = useSyncMagentoCustomersToOdooMutation();
   const syncOrdersMutation = useSyncMagentoOrdersToOdooMutation();
 
-  const isConnected = Boolean(connectionQuery.data?.connected);
+  const isConnected = Boolean(connection.data?.connected);
 
   const previewItems = useMemo(() => {
     switch (previewTab) {
       case 'contacts':
-        return contactsQuery.data;
+        return contacts.data;
       case 'companies':
-        return companiesQuery.data;
+        return companies.data;
       case 'leads':
-        return leadsQuery.data;
+        return leads.data;
       case 'opportunities':
-        return opportunitiesQuery.data;
+        return opportunities.data;
       case 'invoices':
-        return invoicesQuery.data;
+        return invoices.data;
       case 'sales-orders':
-        return salesOrdersQuery.data;
+        return salesOrders.data;
       case 'products':
-        return productsQuery.data;
+        return products.data;
       case 'inventory':
-        return inventoryQuery.data;
+        return inventory.data;
       default:
         return [];
     }
   }, [
     previewTab,
-    contactsQuery.data,
-    companiesQuery.data,
-    leadsQuery.data,
-    opportunitiesQuery.data,
-    invoicesQuery.data,
-    salesOrdersQuery.data,
-    productsQuery.data,
-    inventoryQuery.data,
+    contacts.data,
+    companies.data,
+    leads.data,
+    opportunities.data,
+    invoices.data,
+    salesOrders.data,
+    products.data,
+    inventory.data,
   ]);
 
   const handleConnect = async () => {
@@ -205,15 +214,15 @@ export function OdooIntegrationView() {
         <Grid item xs={12} md={6}>
           <Card sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Connection status</Typography>
-            {connectionQuery.error ? (
+            {connection.error ? (
               <Alert severity="error">Unable to load Odoo connection status.</Alert>
             ) : (
               <Stack spacing={1}>
                 <Typography variant="body2">Connected: {isConnected ? 'Yes' : 'No'}</Typography>
-                <Typography variant="body2">Base URL: {connectionQuery.data?.baseUrl || '-'}</Typography>
-                <Typography variant="body2">Database: {connectionQuery.data?.db || '-'}</Typography>
-                <Typography variant="body2">Username: {connectionQuery.data?.username || '-'}</Typography>
-                <Typography variant="body2">Credential source: {connectionQuery.data?.credentialSource || '-'}</Typography>
+                <Typography variant="body2">Base URL: {connection.data?.baseUrl || '-'}</Typography>
+                <Typography variant="body2">Database: {connection.data?.db || '-'}</Typography>
+                <Typography variant="body2">Username: {connection.data?.username || '-'}</Typography>
+                <Typography variant="body2">Credential source: {connection.data?.credentialSource || '-'}</Typography>
               </Stack>
             )}
           </Card>

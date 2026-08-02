@@ -1,7 +1,4 @@
-'use client';
-
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -30,6 +27,25 @@ import TableContainer from '@mui/material/TableContainer';
 import CircularProgress from '@mui/material/CircularProgress';
 import TablePagination from '@mui/material/TablePagination';
 
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import {
+  fetchOdooCampaigns,
+  fetchOdooSources,
+  fetchOdooMediums,
+  fetchOdooAnalytics,
+  fetchOdooInsights,
+  createOdooCampaign,
+  updateOdooCampaign,
+  setOdooCampaignAction,
+  createOdooSource,
+  updateOdooSource,
+  deleteOdooSource,
+  createOdooMedium,
+  updateOdooMedium,
+  deleteOdooMedium,
+  selectMarketing,
+} from 'src/store/slices/marketing-slice';
+
 import { marketingService } from 'src/services/marketing-service';
 
 import { Iconify } from 'src/components/iconify';
@@ -37,14 +53,14 @@ import { showToast } from 'src/components/toast';
 
 import { FeatureRouteShell } from 'src/sections/parity/feature-route-shell';
 
-type WorkspaceProps = { section?: string };
-type NameMode = null | 'campaign' | 'source' | 'medium';
+type WorkspaceProps = { 
+  section?: string;
+  mode?: string;
+  workflowId?: string;
+  [key: string]: any;
+};
 
-type PendingDelete = null | { kind: 'source' | 'medium'; id: string; name: string };
-type PendingCampaignDelete = null | { id: string; name: string };
-
-export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
-  const queryClient = useQueryClient();
+export function MarketingWorkspaceView({ section, mode, workflowId }: WorkspaceProps = {}) {
   const defaultTab = section === 'sources' ? 'sources' : section === 'mediums' ? 'mediums' : section === 'analytics' ? 'analytics' : 'campaigns';
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [campaignSearch, setCampaignSearch] = useState('');
@@ -73,190 +89,159 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
   const [busyMediumId, setBusyMediumId] = useState<string | null>(null);
   const [pendingCampaignDelete, setPendingCampaignDelete] = useState<PendingCampaignDelete>(null);
 
-  const campaignsQuery = useQuery({
-    queryKey: ['marketing-campaigns', campaignSearch, campaignPage, campaignRowsPerPage],
-    queryFn: () =>
-      marketingService.getCampaignsPage({
-        search: campaignSearch,
-        page: campaignPage + 1,
-        pageSize: campaignRowsPerPage,
-      }),
-  });
-  const sourcesQuery = useQuery({
-    queryKey: ['marketing-sources', sourceSearch, sourcePage, sourceRowsPerPage],
-    queryFn: () =>
-      marketingService.getSourcesPage({
-        search: sourceSearch,
-        page: sourcePage + 1,
-        pageSize: sourceRowsPerPage,
-      }),
-  });
-  const mediumsQuery = useQuery({
-    queryKey: ['marketing-mediums', mediumSearch, mediumPage, mediumRowsPerPage],
-    queryFn: () =>
-      marketingService.getMediumsPage({
-        search: mediumSearch,
-        page: mediumPage + 1,
-        pageSize: mediumRowsPerPage,
-      }),
-  });
-  const analyticsQuery = useQuery({
-    queryKey: ['marketing-analytics', dateFrom, dateTo],
-    queryFn: () => marketingService.getAnalytics({ dateFrom, dateTo }),
-  });
-  const campaignInsightsQuery = useQuery({
-    queryKey: ['marketing-campaign-insights', selectedCampaignId, insightsPage, insightsRowsPerPage],
-    enabled: Boolean(selectedCampaignId),
-    queryFn: () =>
-      marketingService.getCampaignInsights(selectedCampaignId!, {
-        page: insightsPage + 1,
-        pageSize: insightsRowsPerPage,
-      }),
-  });
+  const dispatch = useAppDispatch();
+  const { odooCampaigns, odooSources, odooMediums, odooAnalytics, odooInsights } = useAppSelector(selectMarketing);
 
   const refreshAll = () => {
-    queryClient.invalidateQueries({ queryKey: ['marketing-campaigns'] });
-    queryClient.invalidateQueries({ queryKey: ['marketing-sources'] });
-    queryClient.invalidateQueries({ queryKey: ['marketing-mediums'] });
-    queryClient.invalidateQueries({ queryKey: ['marketing-analytics'] });
-    queryClient.invalidateQueries({ queryKey: ['marketing-campaign-insights'] });
+    dispatch(fetchOdooCampaigns({ search: campaignSearch, page: campaignPage + 1, pageSize: campaignRowsPerPage }));
+    dispatch(fetchOdooSources({ search: sourceSearch, page: sourcePage + 1, pageSize: sourceRowsPerPage }));
+    dispatch(fetchOdooMediums({ search: mediumSearch, page: mediumPage + 1, pageSize: mediumRowsPerPage }));
+    dispatch(fetchOdooAnalytics({ dateFrom, dateTo }));
+    if (selectedCampaignId) {
+      dispatch(fetchOdooInsights({ id: selectedCampaignId, params: { page: insightsPage + 1, pageSize: insightsRowsPerPage } }));
+    }
   };
 
-  const createCampaignMutation = useMutation({
-    mutationFn: (payload: { name: string }) => marketingService.createCampaign(payload),
-    onSuccess: () => {
-      refreshAll();
-      closeNameDialog();
+  useMemo(() => {
+    dispatch(fetchOdooCampaigns({ search: campaignSearch, page: campaignPage + 1, pageSize: campaignRowsPerPage }));
+  }, [dispatch, campaignSearch, campaignPage, campaignRowsPerPage]);
+
+  useMemo(() => {
+    dispatch(fetchOdooSources({ search: sourceSearch, page: sourcePage + 1, pageSize: sourceRowsPerPage }));
+  }, [dispatch, sourceSearch, sourcePage, sourceRowsPerPage]);
+
+  useMemo(() => {
+    dispatch(fetchOdooMediums({ search: mediumSearch, page: mediumPage + 1, pageSize: mediumRowsPerPage }));
+  }, [dispatch, mediumSearch, mediumPage, mediumRowsPerPage]);
+
+  useMemo(() => {
+    dispatch(fetchOdooAnalytics({ dateFrom, dateTo }));
+  }, [dispatch, dateFrom, dateTo]);
+
+  useMemo(() => {
+    if (selectedCampaignId) {
+      dispatch(fetchOdooInsights({ id: selectedCampaignId, params: { page: insightsPage + 1, pageSize: insightsRowsPerPage } }));
+    }
+  }, [dispatch, selectedCampaignId, insightsPage, insightsRowsPerPage]);
+
+  const campaignsRows = odooCampaigns.data;
+  const campaignTotal = odooCampaigns.total;
+  const sources = odooSources.data;
+  const sourcesTotal = odooSources.total;
+  const mediums = odooMediums.data;
+  const mediumsTotal = odooMediums.total;
+  const analytics = odooAnalytics.data;
+
+  const isBusy = odooCampaigns.loading || odooSources.loading || odooMediums.loading || odooAnalytics.loading;
+
+  const handleCreateCampaign = async (name: string) => {
+    try {
+      await dispatch(createOdooCampaign({ name })).unwrap();
       showToast({ severity: 'success', message: 'Campaign created.' });
-    },
-    onError: (err: Error) => showToast({ severity: 'error', message: err.message }),
-  });
-  const updateCampaignMutation = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => marketingService.updateCampaign(id, { name }),
-    onMutate: ({ id }) => setBusyCampaignId(id),
-    onSuccess: () => {
-      refreshAll();
+      closeNameDialog();
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    }
+  };
+
+  const handleUpdateCampaign = async (id: string, name: string) => {
+    try {
+      setBusyCampaignId(id);
+      await dispatch(updateOdooCampaign({ id, name })).unwrap();
+      showToast({ severity: 'success', message: 'Campaign updated.' });
       closeNameDialog();
       setInlineCampaignEditId(null);
       setInlineCampaignName('');
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    } finally {
       setBusyCampaignId(null);
-      showToast({ severity: 'success', message: 'Campaign updated.' });
-    },
-    onError: (err: Error) => {
-      setBusyCampaignId(null);
-      showToast({ severity: 'error', message: err.message });
-    },
-    onSettled: () => setBusyCampaignId(null),
-  });
-  const campaignActionMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'launch' | 'pause' | 'archive' }) => marketingService.setCampaignAction(id, action),
-    onMutate: ({ id }) => {
+    }
+  };
+
+  const handleCampaignAction = async (id: string, action: 'launch' | 'pause' | 'archive') => {
+    try {
       setBusyCampaignId(id);
-    },
-    onSuccess: () => {
-      refreshAll();
-      setBusyCampaignId(null);
+      await dispatch(setOdooCampaignAction({ id, action })).unwrap();
       showToast({ severity: 'success', message: 'Campaign status updated.' });
-    },
-    onError: (err: Error) => {
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    } finally {
       setBusyCampaignId(null);
-      showToast({ severity: 'error', message: err.message });
-    },
-    onSettled: () => setBusyCampaignId(null),
-  });
+    }
+  };
 
-  const createSourceMutation = useMutation({
-    mutationFn: (payload: { name: string }) => marketingService.createSource(payload),
-    onSuccess: () => {
-      refreshAll();
-      closeNameDialog();
+  const handleCreateSource = async (name: string) => {
+    try {
+      await dispatch(createOdooSource({ name })).unwrap();
       showToast({ severity: 'success', message: 'Source created.' });
-    },
-    onError: (err: Error) => showToast({ severity: 'error', message: err.message }),
-  });
-  const updateSourceMutation = useMutation({
-    mutationFn: ({ id, name, active }: { id: string; name?: string; active?: boolean }) =>
-      marketingService.updateSource(id, { name, active }),
-    onMutate: (vars) => setBusySourceId(vars.id),
-    onSuccess: () => {
-      refreshAll();
       closeNameDialog();
-      setBusySourceId(null);
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    }
+  };
+
+  const handleUpdateSource = async (id: string, name?: string, active?: boolean) => {
+    try {
+      setBusySourceId(id);
+      await dispatch(updateOdooSource({ id, name, active })).unwrap();
       showToast({ severity: 'success', message: 'Source updated.' });
-    },
-    onError: (err: Error) => {
+      closeNameDialog();
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    } finally {
       setBusySourceId(null);
-      showToast({ severity: 'error', message: err.message });
-    },
-    onSettled: () => setBusySourceId(null),
-  });
-  const deleteSourceMutation = useMutation({
-    mutationFn: (id: string) => marketingService.deleteSource(id),
-    onMutate: (id) => setBusySourceId(id),
-    onSuccess: () => {
-      refreshAll();
-      setPendingDelete(null);
-      setBusySourceId(null);
+    }
+  };
+
+  const handleDeleteSource = async (id: string) => {
+    try {
+      setBusySourceId(id);
+      await dispatch(deleteOdooSource(id)).unwrap();
       showToast({ severity: 'success', message: 'Source deleted.' });
-    },
-    onError: (err: Error) => {
-      setBusySourceId(null);
-      showToast({ severity: 'error', message: err.message });
-    },
-    onSettled: () => setBusySourceId(null),
-  });
-
-  const createMediumMutation = useMutation({
-    mutationFn: (payload: { name: string }) => marketingService.createMedium(payload),
-    onSuccess: () => {
-      refreshAll();
-      closeNameDialog();
-      showToast({ severity: 'success', message: 'Medium created.' });
-    },
-    onError: (err: Error) => showToast({ severity: 'error', message: err.message }),
-  });
-  const updateMediumMutation = useMutation({
-    mutationFn: ({ id, name, active }: { id: string; name?: string; active?: boolean }) =>
-      marketingService.updateMedium(id, { name, active }),
-    onMutate: (vars) => setBusyMediumId(vars.id),
-    onSuccess: () => {
-      refreshAll();
-      closeNameDialog();
-      setBusyMediumId(null);
-      showToast({ severity: 'success', message: 'Medium updated.' });
-    },
-    onError: (err: Error) => {
-      setBusyMediumId(null);
-      showToast({ severity: 'error', message: err.message });
-    },
-    onSettled: () => setBusyMediumId(null),
-  });
-  const deleteMediumMutation = useMutation({
-    mutationFn: (id: string) => marketingService.deleteMedium(id),
-    onMutate: (id) => setBusyMediumId(id),
-    onSuccess: () => {
-      refreshAll();
       setPendingDelete(null);
-      setBusyMediumId(null);
-      showToast({ severity: 'success', message: 'Medium deleted.' });
-    },
-    onError: (err: Error) => {
-      setBusyMediumId(null);
-      showToast({ severity: 'error', message: err.message });
-    },
-    onSettled: () => setBusyMediumId(null),
-  });
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    } finally {
+      setBusySourceId(null);
+    }
+  };
 
-  const campaignRows = useMemo(
-    () => (Array.isArray(campaignsQuery.data?.items) ? campaignsQuery.data.items : []),
-    [campaignsQuery.data?.items]
-  );
-  const campaignTotal = Number(campaignsQuery.data?.total ?? 0);
-  const sources = useMemo(() => (Array.isArray(sourcesQuery.data?.items) ? sourcesQuery.data.items : []), [sourcesQuery.data?.items]);
-  const sourcesTotal = Number(sourcesQuery.data?.total ?? 0);
-  const mediums = useMemo(() => (Array.isArray(mediumsQuery.data?.items) ? mediumsQuery.data.items : []), [mediumsQuery.data?.items]);
-  const mediumsTotal = Number(mediumsQuery.data?.total ?? 0);
-  const analytics = analyticsQuery.data;
+  const handleCreateMedium = async (name: string) => {
+    try {
+      await dispatch(createOdooMedium({ name })).unwrap();
+      showToast({ severity: 'success', message: 'Medium created.' });
+      closeNameDialog();
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    }
+  };
+
+  const handleUpdateMedium = async (id: string, name?: string, active?: boolean) => {
+    try {
+      setBusyMediumId(id);
+      await dispatch(updateOdooMedium({ id, name, active })).unwrap();
+      showToast({ severity: 'success', message: 'Medium updated.' });
+      closeNameDialog();
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    } finally {
+      setBusyMediumId(null);
+    }
+  };
+
+  const handleDeleteMedium = async (id: string) => {
+    try {
+      setBusyMediumId(id);
+      await dispatch(deleteOdooMedium(id)).unwrap();
+      showToast({ severity: 'success', message: 'Medium deleted.' });
+      setPendingDelete(null);
+    } catch (err: any) {
+      showToast({ severity: 'error', message: err });
+    } finally {
+      setBusyMediumId(null);
+    }
+  };
 
   const openNameDialog = (mode: NameMode, current?: { id?: string; name?: string }) => {
     setNameDialogMode(mode);
@@ -275,22 +260,21 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
     const name = nameInput.trim();
     if (!name || !nameDialogMode) return;
     if (nameDialogMode === 'campaign') {
-      if (editingId) updateCampaignMutation.mutate({ id: editingId, name });
-      else createCampaignMutation.mutate({ name });
+      if (editingId) handleUpdateCampaign(editingId, name);
+      else handleCreateCampaign(name);
       return;
     }
     if (nameDialogMode === 'source') {
-      if (editingId) updateSourceMutation.mutate({ id: editingId, name });
-      else createSourceMutation.mutate({ name });
+      if (editingId) handleUpdateSource(editingId, name);
+      else handleCreateSource(name);
       return;
     }
     if (nameDialogMode === 'medium') {
-      if (editingId) updateMediumMutation.mutate({ id: editingId, name });
-      else createMediumMutation.mutate({ name });
+      if (editingId) handleUpdateMedium(editingId, name);
+      else handleCreateMedium(name);
     }
   };
 
-  const isBusy = campaignsQuery.isLoading || sourcesQuery.isLoading || mediumsQuery.isLoading || analyticsQuery.isLoading;
 
   return (
     <FeatureRouteShell
@@ -351,7 +335,7 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
                                 onClick={() => {
                                   const next = inlineCampaignName.trim();
                                   if (!next) return;
-                                  updateCampaignMutation.mutate({ id: campaign.id, name: next });
+                                  handleUpdateCampaign(campaign.id, next);
                                 }}
                               >
                                 {busyCampaignId === campaign.id ? <CircularProgress size={18} /> : <Iconify icon="solar:check-circle-bold" />}
@@ -402,9 +386,9 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
                             >
                               Details
                             </Button>
-                            <Button size="small" variant="outlined" disabled={busyCampaignId === campaign.id} onClick={() => campaignActionMutation.mutate({ id: campaign.id, action: 'launch' })}>Launch</Button>
-                            <Button size="small" variant="outlined" disabled={busyCampaignId === campaign.id} onClick={() => campaignActionMutation.mutate({ id: campaign.id, action: 'pause' })}>Pause</Button>
-                            <Button size="small" color="warning" variant="outlined" disabled={busyCampaignId === campaign.id} onClick={() => campaignActionMutation.mutate({ id: campaign.id, action: 'archive' })}>Archive</Button>
+                            <Button size="small" variant="outlined" disabled={busyCampaignId === campaign.id} onClick={() => handleCampaignAction(campaign.id, 'launch')}>Launch</Button>
+                            <Button size="small" variant="outlined" disabled={busyCampaignId === campaign.id} onClick={() => handleCampaignAction(campaign.id, 'pause')}>Pause</Button>
+                            <Button size="small" color="warning" variant="outlined" disabled={busyCampaignId === campaign.id} onClick={() => handleCampaignAction(campaign.id, 'archive')}>Archive</Button>
                             <IconButton
                               color="error"
                               disabled={busyCampaignId === campaign.id}
@@ -464,7 +448,7 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
                           checked={source.active !== false}
                           disabled={busySourceId === source.id}
                           onChange={(event) =>
-                            updateSourceMutation.mutate({ id: source.id, name: source.name, active: event.target.checked })
+                            handleUpdateSource(source.id, source.name, event.target.checked)
                           }
                         />
                       </Stack>
@@ -523,7 +507,7 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
                           checked={medium.active !== false}
                           disabled={busyMediumId === medium.id}
                           onChange={(event) =>
-                            updateMediumMutation.mutate({ id: medium.id, name: medium.name, active: event.target.checked })
+                            handleUpdateMedium(medium.id, medium.name, event.target.checked)
                           }
                         />
                       </Stack>
@@ -598,11 +582,10 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
           <Button
             color="error"
             variant="contained"
-            disabled={deleteSourceMutation.isPending || deleteMediumMutation.isPending}
             onClick={() => {
               if (!pendingDelete) return;
-              if (pendingDelete.kind === 'source') deleteSourceMutation.mutate(pendingDelete.id);
-              if (pendingDelete.kind === 'medium') deleteMediumMutation.mutate(pendingDelete.id);
+              if (pendingDelete.kind === 'source') handleDeleteSource(pendingDelete.id);
+              if (pendingDelete.kind === 'medium') handleDeleteMedium(pendingDelete.id);
             }}
           >
             Delete
@@ -622,10 +605,9 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
           <Button
             color="warning"
             variant="contained"
-            disabled={campaignActionMutation.isPending}
             onClick={() => {
               if (!pendingCampaignDelete) return;
-              campaignActionMutation.mutate({ id: pendingCampaignDelete.id, action: 'archive' });
+              handleCampaignAction(pendingCampaignDelete.id, 'archive');
               setPendingCampaignDelete(null);
             }}
           >
@@ -637,36 +619,36 @@ export function MarketingWorkspaceView({ section }: WorkspaceProps = {}) {
       <Drawer anchor="right" open={Boolean(selectedCampaignId)} onClose={() => setSelectedCampaignId(null)}>
         <Box sx={{ width: 520, p: 3 }}>
           <Typography variant="h6" sx={{ mb: 2 }}>Campaign Insights</Typography>
-          {campaignInsightsQuery.isLoading ? (
+          {odooInsights.loading ? (
             <CircularProgress />
           ) : (
             <Stack spacing={3}>
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Related Leads ({campaignInsightsQuery.data?.leadsTotal ?? 0})
+                  Related Leads ({odooInsights.data?.leadsTotal ?? 0})
                 </Typography>
                 <Stack spacing={1}>
-                  {(campaignInsightsQuery.data?.leads || []).map((lead: any) => (
+                  {(odooInsights.data?.leads || []).map((lead: any) => (
                     <Alert key={`lead-${lead.id}`} severity="info">{lead.name} • {lead.type || 'lead'} • {lead.email_from || 'No email'}</Alert>
                   ))}
-                  {(campaignInsightsQuery.data?.leads || []).length === 0 && <Alert severity="warning">No leads linked.</Alert>}
+                  {(odooInsights.data?.leads || []).length === 0 && <Alert severity="warning">No leads linked.</Alert>}
                 </Stack>
               </Box>
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Related Orders ({campaignInsightsQuery.data?.ordersTotal ?? 0})
+                  Related Orders ({odooInsights.data?.ordersTotal ?? 0})
                 </Typography>
                 <Stack spacing={1}>
-                  {(campaignInsightsQuery.data?.orders || []).map((order: any) => (
+                  {(odooInsights.data?.orders || []).map((order: any) => (
                     <Alert key={`order-${order.id}`} severity="success">{order.name || `Order #${order.id}`} • ${Number(order.amount_total || 0).toFixed(2)} • {order.state}</Alert>
                   ))}
-                  {(campaignInsightsQuery.data?.orders || []).length === 0 && <Alert severity="warning">No orders linked.</Alert>}
+                  {(odooInsights.data?.orders || []).length === 0 && <Alert severity="warning">No orders linked.</Alert>}
                 </Stack>
               </Box>
 
               <TablePagination
                 component="div"
-                count={Math.max(Number(campaignInsightsQuery.data?.leadsTotal || 0), Number(campaignInsightsQuery.data?.ordersTotal || 0))}
+                count={Math.max(Number(odooInsights.data?.leadsTotal || 0), Number(odooInsights.data?.ordersTotal || 0))}
                 page={insightsPage}
                 onPageChange={(_event, nextPage) => setInsightsPage(nextPage)}
                 rowsPerPage={insightsRowsPerPage}

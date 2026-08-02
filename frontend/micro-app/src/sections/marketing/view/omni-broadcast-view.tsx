@@ -1,6 +1,6 @@
-'use client';
-
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
+import { fetchBroadcasts, selectMarketing } from 'src/store/slices/marketing-slice';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -16,7 +16,6 @@ import LinearProgress from '@mui/material/LinearProgress';
 import TableContainer from '@mui/material/TableContainer';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { omniMarketingService } from 'src/services/omni-service';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -25,10 +24,15 @@ import { Scrollbar } from 'src/components/scrollbar';
 // ----------------------------------------------------------------------
 
 export function OmniBroadcastView() {
-  const { data: broadcasts, isLoading } = useQuery({
-    queryKey: ['omni-broadcasts'],
-    queryFn: () => omniMarketingService.getBroadcasts(),
-  });
+  const dispatch = useAppDispatch();
+  const { omniBroadcasts } = useAppSelector(selectMarketing);
+
+  const broadcasts = omniBroadcasts.data;
+  const isLoading = omniBroadcasts.loading;
+
+  useEffect(() => {
+    dispatch(fetchBroadcasts());
+  }, [dispatch]);
 
   if (isLoading) {
     return <Box sx={{ p: 5, textAlign: 'center' }}><LinearProgress /></Box>;

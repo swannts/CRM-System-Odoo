@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-
+import { useAppDispatch } from 'src/store/hooks';
+import { fetchContactById } from 'src/store/slices/contact-slice';
 import { useAuthContext } from 'src/auth/hooks';
-
 import { useSocket } from './use-socket';
 
 export function useContactRealtime(contactId: string, orgId: string) {
   const socket = useSocket(orgId);
-  const queryClient = useQueryClient();
+  const dispatch = useAppDispatch();
   const { user } = useAuthContext();
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const userId = user?.id ? String(user.id) : '';
@@ -39,8 +38,8 @@ export function useContactRealtime(contactId: string, orgId: string) {
     // Listen for updates
     const handleUpdated = (data: any) => {
       if (data.contactId === contactId) {
-        // Invalidate query to refetch fresh data from Odoo
-        queryClient.invalidateQueries({ queryKey: ['contact', contactId] });
+        // Dispatch action to refetch fresh data from Odoo
+        dispatch(fetchContactById(contactId));
       }
     };
 
@@ -51,7 +50,7 @@ export function useContactRealtime(contactId: string, orgId: string) {
       socket.off('contact:presence', handlePresence);
       socket.off('contact:updated', handleUpdated);
     };
-  }, [socket, contactId, queryClient, userId, userName]);
+  }, [socket, contactId, dispatch, userId, userName]);
 
   const notifyEditing = () => {
     if (socket && contactId && userId && userName) {
