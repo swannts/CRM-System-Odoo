@@ -1,5 +1,5 @@
 import { startKafkaConsumer } from "@mymanager/node-service-kit";
-import { WhatsAppService, TelegramService } from "../services/index.js";
+import { WhatsAppService, TelegramService } from "../modules/integrations/index.js";
 import { config } from "../config/index.js";
 
 const waSvc = new WhatsAppService();

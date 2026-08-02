@@ -19,7 +19,7 @@ import {
   VoiceIntegrationController,
   WhatsAppController,
   ZoomController,
-} from '../controllers/index.js';
+} from '../modules/integrations/index.js';
 import { identityMiddleware } from '../middleware/identity.js';
 
 const auth = identityMiddleware;

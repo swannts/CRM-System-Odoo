@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 
-import { WebhookController } from '../controllers/index.js';
+import { WebhookController } from '../modules/integrations/index.js';
 
 const webhookController = new WebhookController();
 
