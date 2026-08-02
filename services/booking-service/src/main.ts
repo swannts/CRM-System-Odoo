@@ -1,15 +1,19 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
+import { createSwaggerConfig } from './config/swagger.config.js';
 
 import { rateLimit } from 'express-rate-limit';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+  const allowedOrigin = configService.get<string>('app.allowedOrigin') || '*';
 
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGIN || '*',
+    origin: allowedOrigin,
     credentials: true,
   });
 
@@ -27,16 +31,11 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  const config = new DocumentBuilder()
-    .setTitle('Booking Service')
-    .setDescription('The MyManager Booking & Appointment API')
-    .setVersion('1.0')
-    .addTag('booking')
-    .build();
+  const config = createSwaggerConfig();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api-docs', app, document);
 
-  const port = process.env.PORT || 7040;
+  const port = configService.get<number>('app.port') || 7040;
   await app.listen(port, '0.0.0.0');
   console.log(`Booking Service is running on: http://localhost:${port}`);
 }

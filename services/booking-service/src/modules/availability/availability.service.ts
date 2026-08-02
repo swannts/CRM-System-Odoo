@@ -1,9 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { AvailabilityRepository } from './repositories/availability.repository.js';
+import { BookingTypesRepository } from '../booking-types/repositories/booking-types.repository.js';
+import { CreateAvailabilityDto } from './dto/create-availability.dto.js';
+import { UpdateAvailabilityDto } from './dto/update-availability.dto.js';
 
 @Injectable()
 export class AvailabilityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly availabilityRepository: AvailabilityRepository,
+    private readonly bookingTypesRepository: BookingTypesRepository,
+  ) {}
 
   private normalizeTime(value: string) {
     const trimmed = String(value || '').trim();
@@ -21,25 +27,10 @@ export class AvailabilityService {
 
   async findAll(orgId: string, bookingTypeId?: string) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
-    const where: any = { bookingType: { orgId } };
-    if (bookingTypeId) where.bookingTypeId = bookingTypeId;
-
-    return this.prisma.availability.findMany({
-      where,
-      include: {
-        bookingType: {
-          select: {
-            id: true,
-            title: true,
-            slug: true,
-          },
-        },
-      },
-      orderBy: [{ bookingTypeId: 'asc' }, { dayOfWeek: 'asc' }, { startTime: 'asc' }],
-    });
+    return this.availabilityRepository.findAll(orgId, bookingTypeId);
   }
 
-  async create(orgId: string, data: any) {
+  async create(orgId: string, data: CreateAvailabilityDto) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
     const bookingTypeId = String(data?.bookingTypeId || '').trim();
     if (!bookingTypeId) throw new BadRequestException('bookingTypeId is required.');
@@ -53,32 +44,25 @@ export class AvailabilityService {
     const endTime = this.normalizeTime(data?.endTime);
     this.assertRange(startTime, endTime);
 
-    const bookingType = await this.prisma.bookingType.findFirst({ where: { id: bookingTypeId, orgId } });
+    const bookingType = await this.bookingTypesRepository.findById(bookingTypeId);
     if (!bookingType) {
       throw new BadRequestException('bookingTypeId is invalid for this organization.');
     }
+    if (bookingType.orgId !== orgId) {
+      throw new BadRequestException('bookingTypeId is invalid for this organization.');
+    }
 
-    return this.prisma.availability.create({
-      data: {
-        bookingTypeId,
-        dayOfWeek,
-        startTime,
-        endTime,
-      },
-      include: {
-        bookingType: {
-          select: { id: true, title: true, slug: true },
-        },
-      },
+    return this.availabilityRepository.create({
+      bookingTypeId,
+      dayOfWeek,
+      startTime,
+      endTime,
     });
   }
 
-  async update(orgId: string, id: string, data: any) {
+  async update(orgId: string, id: string, data: UpdateAvailabilityDto) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
-    const row = await this.prisma.availability.findFirst({
-      where: { id, bookingType: { orgId } },
-      include: { bookingType: { select: { id: true } } },
-    });
+    const row = await this.availabilityRepository.findByIdAndOrg(id, orgId);
     if (!row) throw new NotFoundException(`Availability rule ${id} not found.`);
 
     const patch: any = {};
@@ -101,23 +85,15 @@ export class AvailabilityService {
       throw new BadRequestException('No updatable fields provided.');
     }
 
-    return this.prisma.availability.update({
-      where: { id: row.id },
-      data: patch,
-      include: {
-        bookingType: {
-          select: { id: true, title: true, slug: true },
-        },
-      },
-    });
+    return this.availabilityRepository.update(row.id, patch);
   }
 
   async remove(orgId: string, id: string) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
-    const row = await this.prisma.availability.findFirst({ where: { id, bookingType: { orgId } } });
+    const row = await this.availabilityRepository.findByIdAndOrg(id, orgId);
     if (!row) throw new NotFoundException(`Availability rule ${id} not found.`);
 
-    await this.prisma.availability.delete({ where: { id: row.id } });
+    await this.availabilityRepository.delete(row.id);
     return { success: true };
   }
 }

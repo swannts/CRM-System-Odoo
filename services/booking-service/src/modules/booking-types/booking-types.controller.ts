@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Headers } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { BookingTypesService } from './booking-types.service.js';
+import { CreateBookingTypeDto } from './dto/create-booking-type.dto.js';
+import { UpdateBookingTypeDto } from './dto/update-booking-type.dto.js';
 
 @ApiTags('booking-types')
 @Controller('v1/booking-types')
@@ -11,7 +13,7 @@ export class BookingTypesController {
   @ApiOperation({ summary: 'Create a new booking type' })
   create(
     @Headers('X-Org-Id') orgId: string,
-    @Body() createBookingTypeDto: any
+    @Body() createBookingTypeDto: CreateBookingTypeDto
   ) {
     return this.bookingTypesService.create(orgId, createBookingTypeDto);
   }
@@ -30,7 +32,7 @@ export class BookingTypesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a booking type' })
-  update(@Param('id') id: string, @Body() updateBookingTypeDto: any) {
+  update(@Param('id') id: string, @Body() updateBookingTypeDto: UpdateBookingTypeDto) {
     return this.bookingTypesService.update(id, updateBookingTypeDto);
   }
 

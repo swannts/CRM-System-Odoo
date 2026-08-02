@@ -1,49 +1,24 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BookingTypesRepository } from './repositories/booking-types.repository.js';
+import { CreateBookingTypeDto } from './dto/create-booking-type.dto.js';
+import { UpdateBookingTypeDto } from './dto/update-booking-type.dto.js';
 
 @Injectable()
 export class BookingTypesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly bookingTypesRepository: BookingTypesRepository) {}
 
-  async create(orgId: string, data: any) {
-    const slug = data.slug || data.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-    
-    return this.prisma.bookingType.create({
-      data: {
-        ...data,
-        orgId,
-        slug,
-        availabilities: {
-          create: data.availabilities || []
-        }
-      },
-      include: {
-        availabilities: true
-      }
-    });
+  async create(orgId: string, data: CreateBookingTypeDto) {
+    if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
+    return this.bookingTypesRepository.create(orgId, data);
   }
 
   async findAll(orgId: string) {
-    return this.prisma.bookingType.findMany({
-      where: { orgId, isActive: true },
-      include: {
-        availabilities: true
-      }
-    });
+    if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
+    return this.bookingTypesRepository.findAll(orgId);
   }
 
   async findOne(idOrSlug: string) {
-    const bookingType = await this.prisma.bookingType.findFirst({
-      where: {
-        OR: [
-          { id: idOrSlug },
-          { slug: idOrSlug }
-        ]
-      },
-      include: {
-        availabilities: true
-      }
-    });
+    const bookingType = await this.bookingTypesRepository.findByIdOrSlug(idOrSlug);
 
     if (!bookingType) {
       throw new NotFoundException(`Booking type ${idOrSlug} not found`);
@@ -52,41 +27,11 @@ export class BookingTypesService {
     return bookingType;
   }
 
-  async update(id: string, data: any) {
-    const { availabilities, ...rest } = data;
-
-    if (availabilities) {
-      await this.prisma.availability.deleteMany({
-        where: { bookingTypeId: id }
-      });
-      
-      return this.prisma.bookingType.update({
-        where: { id },
-        data: {
-          ...rest,
-          availabilities: {
-            create: availabilities
-          }
-        },
-        include: {
-          availabilities: true
-        }
-      });
-    }
-
-    return this.prisma.bookingType.update({
-      where: { id },
-      data: rest,
-      include: {
-        availabilities: true
-      }
-    });
+  async update(id: string, data: UpdateBookingTypeDto) {
+    return this.bookingTypesRepository.update(id, data);
   }
 
   async remove(id: string) {
-    return this.prisma.bookingType.update({
-      where: { id },
-      data: { isActive: false }
-    });
+    return this.bookingTypesRepository.remove(id);
   }
 }

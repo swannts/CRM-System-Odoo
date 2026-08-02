@@ -1,18 +1,21 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException, Inject } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { addMinutes, format, startOfDay, endOfDay, isBefore, isAfter } from 'date-fns';
+import { AppointmentsRepository } from './repositories/appointments.repository.js';
+import { BookingTypesRepository } from '../booking-types/repositories/booking-types.repository.js';
+import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
+import { UpdateAppointmentDto } from './dto/update-appointment.dto.js';
 
 @Injectable()
 export class AppointmentsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly appointmentsRepository: AppointmentsRepository,
+    private readonly bookingTypesRepository: BookingTypesRepository,
+  ) {}
 
-  async create(orgId: string, data: any) {
+  async create(orgId: string, data: CreateAppointmentDto) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
 
-    // Basic validation
-    const bookingType = await this.prisma.bookingType.findUnique({
-      where: { id: data.bookingTypeId }
-    });
+    const bookingType = await this.bookingTypesRepository.findById(data.bookingTypeId);
 
     if (!bookingType) throw new NotFoundException('Booking type not found');
     if (bookingType.orgId !== orgId) {
@@ -21,64 +24,43 @@ export class AppointmentsService {
 
     const startTime = new Date(data.startTime);
     const endTime = addMinutes(startTime, bookingType.durationMinutes);
-    const { orgId: _ignoredOrgId, ...safeData } = data;
 
-    return this.prisma.appointment.create({
-      data: {
-        ...safeData,
-        orgId,
-        startTime,
-        endTime,
-      }
+    return this.appointmentsRepository.create(orgId, {
+      ...data,
+      startTime,
+      endTime,
     });
   }
 
-  async createPublic(data: any) {
+  async createPublic(data: CreateAppointmentDto) {
     if (!data?.bookingTypeId) {
       throw new BadRequestException('bookingTypeId is required for public booking');
     }
 
-    const bookingType = await this.prisma.bookingType.findUnique({
-      where: { id: data.bookingTypeId }
-    });
+    const bookingType = await this.bookingTypesRepository.findById(data.bookingTypeId);
 
     if (!bookingType) throw new NotFoundException('Booking type not found');
     if (!bookingType.isActive) throw new BadRequestException('Booking type is not active');
 
     const startTime = new Date(data.startTime);
     const endTime = addMinutes(startTime, bookingType.durationMinutes);
-    const { orgId: _ignoredOrgId, ...safeData } = data;
 
-    return this.prisma.appointment.create({
-      data: {
-        ...safeData,
-        orgId: bookingType.orgId,
-        startTime,
-        endTime,
-      },
+    return this.appointmentsRepository.create(bookingType.orgId, {
+      ...data,
+      startTime,
+      endTime,
     });
   }
 
   async findAll(orgId: string, contactId?: string) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
-    const where: any = { orgId };
-    if (contactId) where.contactId = contactId;
 
     try {
-      return await this.prisma.appointment.findMany({
-        where,
-        include: {
-          bookingType: true
-        },
-        orderBy: { startTime: 'asc' }
-      });
+      return await this.appointmentsRepository.findMany(orgId, contactId);
     } catch (errorWithInclude) {
       // Keep the endpoint usable even if relational rows are partially inconsistent.
       try {
-        return await this.prisma.appointment.findMany({
-          where,
-          orderBy: { startTime: 'asc' },
-        });
+        return await this.appointmentsRepository.findManyWithoutRelations(orgId, contactId);
       } catch (errorPlain) {
         console.error('AppointmentsService.findAll failed', {
           orgId,
@@ -94,31 +76,22 @@ export class AppointmentsService {
   async findOne(orgId: string, id: string) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
 
-    const appointment = await this.prisma.appointment.findFirst({
-      where: { id, orgId },
-      include: { bookingType: true }
-    });
+    const appointment = await this.appointmentsRepository.findOne(orgId, id);
 
     if (!appointment) throw new NotFoundException(`Appointment ${id} not found`);
     return appointment;
   }
 
-  async update(orgId: string, id: string, data: any) {
+  async update(orgId: string, id: string, data: UpdateAppointmentDto) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
-    const { count } = await this.prisma.appointment.updateMany({
-      where: { id, orgId },
-      data,
-    });
+    const { count } = await this.appointmentsRepository.updateMany(orgId, id, data);
 
     if (count === 0) throw new NotFoundException(`Appointment ${id} not found`);
     return this.findOne(orgId, id);
   }
 
   async getAvailableSlots(bookingTypeId: string, dateStr: string) {
-    const bookingType = await this.prisma.bookingType.findUnique({
-      where: { id: bookingTypeId },
-      include: { availabilities: true }
-    });
+    const bookingType = await this.bookingTypesRepository.findById(bookingTypeId);
 
     if (!bookingType) throw new NotFoundException('Booking type not found');
 
@@ -132,13 +105,7 @@ export class AppointmentsService {
     const dayStart = startOfDay(date);
     const dayEnd = endOfDay(date);
 
-    const existingAppointments = await this.prisma.appointment.findMany({
-      where: {
-        bookingTypeId,
-        startTime: { gte: dayStart, lte: dayEnd },
-        status: { notIn: ['CANCELLED'] }
-      }
-    });
+    const existingAppointments = await this.appointmentsRepository.findForDay(bookingTypeId, dayStart, dayEnd);
 
     // Generate possible slots
     const slots = [];

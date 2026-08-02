@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Headers, Query, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AppointmentsService } from './appointments.service.js';
+import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
+import { UpdateAppointmentDto } from './dto/update-appointment.dto.js';
 
 @ApiTags('appointments')
 @Controller('v1/appointments')
@@ -22,14 +24,14 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Create a new appointment' })
   create(
     @Headers('X-Org-Id') orgId: string,
-    @Body() createAppointmentDto: any
+    @Body() createAppointmentDto: CreateAppointmentDto
   ) {
     return this.appointmentsService.create(orgId, createAppointmentDto);
   }
 
   @Post('public')
   @ApiOperation({ summary: 'Create a new appointment from public landing page' })
-  createPublic(@Body() createAppointmentDto: any) {
+  createPublic(@Body() createAppointmentDto: CreateAppointmentDto) {
     return this.appointmentsService.createPublic(createAppointmentDto);
   }
 
@@ -59,7 +61,7 @@ export class AppointmentsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update an appointment status' })
-  update(@Headers('X-Org-Id') orgId: string, @Param('id') id: string, @Body() updateAppointmentDto: any) {
+  update(@Headers('X-Org-Id') orgId: string, @Param('id') id: string, @Body() updateAppointmentDto: UpdateAppointmentDto) {
     return this.appointmentsService.update(orgId, id, updateAppointmentDto);
   }
 
