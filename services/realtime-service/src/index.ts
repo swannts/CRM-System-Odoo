@@ -32,22 +32,22 @@ const omniAgentCtrl = new OmniAgentController();
 const inboxCompatCtrl = new InboxCompatController();
 
 // --- Live Chat ---
-app.post("/v1/livechat/channels", auth, (req, res) => channelCtrl.getChannelsByAdminId(cast(req), res));
-app.get("/v1/livechat/channel/:channelId", auth, (req, res) => channelCtrl.getChannelById(cast(req), res));
-app.delete("/v1/livechat/channel/:channelId/:contactId", auth, (req, res) => channelCtrl.deleteChannel(cast(req), res));
+app.post("/v1/livechat/channels", auth, (req: any, res: any) => channelCtrl.getChannelsByAdminId(cast(req), res));
+app.get("/v1/livechat/channel/:channelId", auth, (req: any, res: any) => channelCtrl.getChannelById(cast(req), res));
+app.delete("/v1/livechat/channel/:channelId/:contactId", auth, (req: any, res: any) => channelCtrl.deleteChannel(cast(req), res));
 
-app.get("/v1/livechat/chathistory/:channelId", (req, res) => messageCtrl.getChatHistory(cast(req), res));
-app.post("/v1/livechat/newmessage", (req, res) => messageCtrl.addMessage(cast(req), res));
-app.get("/v1/livechat/chats-and-contacts", auth, (req, res) => messageCtrl.getChatsAndContacts(cast(req), res));
+app.get("/v1/livechat/chathistory/:channelId", (req: any, res: any) => messageCtrl.getChatHistory(cast(req), res));
+app.post("/v1/livechat/newmessage", (req: any, res: any) => messageCtrl.addMessage(cast(req), res));
+app.get("/v1/livechat/chats-and-contacts", auth, (req: any, res: any) => messageCtrl.getChatsAndContacts(cast(req), res));
 
-app.post("/v1/livechat/contact", auth, (req, res) => contactCtrl.createContact(cast(req), res));
+app.post("/v1/livechat/contact", auth, (req: any, res: any) => contactCtrl.createContact(cast(req), res));
 
-app.post("/v1/livechat/widget-setting", auth, (req, res) => widgetCtrl.saveSetting(cast(req), res));
-app.get("/v1/livechat/widget-setting", auth, (req, res) => widgetCtrl.getSetting(cast(req), res));
-app.get("/v1/livechat/widget-setting/pub", (req, res) => widgetCtrl.getPublicSetting(cast(req), res));
-app.post("/v1/livechat/widget-setting/send-code", auth, (req, res) => widgetCtrl.sendCode(cast(req), res));
+app.post("/v1/livechat/widget-setting", auth, (req: any, res: any) => widgetCtrl.saveSetting(cast(req), res));
+app.get("/v1/livechat/widget-setting", auth, (req: any, res: any) => widgetCtrl.getSetting(cast(req), res));
+app.get("/v1/livechat/widget-setting/pub", (req: any, res: any) => widgetCtrl.getPublicSetting(cast(req), res));
+app.post("/v1/livechat/widget-setting/send-code", auth, (req: any, res: any) => widgetCtrl.sendCode(cast(req), res));
 
-app.get("/v1/livechat/statistics", auth, (req, res) => statsCtrl.getStatistics(cast(req), res));
+app.get("/v1/livechat/statistics", auth, (req: any, res: any) => statsCtrl.getStatistics(cast(req), res));
 
 // --- Omni ---
 app.get("/v1/omni/conversations", auth, route(omniConvCtrl.getConversations.bind(omniConvCtrl)));
@@ -77,12 +77,12 @@ app.post("/v1/inbox/send_image", auth, route(inboxCompatCtrl.sendImage.bind(inbo
 app.all("/v1/inbox/webhook/:uid", route(inboxCompatCtrl.webhook.bind(inboxCompatCtrl)));
 
 // --- Notifications (Dummy) ---
-app.get("/v1/notifications", auth, (req, res) => res.json({ data: [], total: 0 }));
-app.get("/v1/notifications/total", auth, (req, res) => res.json({ data: { all: 0, unread: 0, archived: 0, categories: [] } }));
-app.post("/v1/notifications/read", auth, (req, res) => res.json({ success: true }));
-app.post("/v1/notifications/archive", auth, (req, res) => res.json({ success: true }));
-app.post("/v1/notifications/unarchive", auth, (req, res) => res.json({ success: true }));
-app.post("/v1/notifications/mark-seen/:id/:userId", auth, (req, res) => res.json({ success: true }));
+app.get("/v1/notifications", auth, (req: any, res: any) => res.json({ data: [], total: 0 }));
+app.get("/v1/notifications/total", auth, (req: any, res: any) => res.json({ data: { all: 0, unread: 0, archived: 0, categories: [] } }));
+app.post("/v1/notifications/read", auth, (req: any, res: any) => res.json({ success: true }));
+app.post("/v1/notifications/archive", auth, (req: any, res: any) => res.json({ success: true }));
+app.post("/v1/notifications/unarchive", auth, (req: any, res: any) => res.json({ success: true }));
+app.post("/v1/notifications/mark-seen/:id/:userId", auth, (req: any, res: any) => res.json({ success: true }));
 
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
@@ -189,7 +189,7 @@ async function startConsumer() {
   });
 }
 
-app.get("/health", (_req, res) => res.json({ status: "ok", service: "realtime-service" }));
+app.get("/health", (_req: any, res: any) => res.json({ status: "ok", service: "realtime-service" }));
 
 const port = Number(process.env.PORT || 7030);
 server.listen(port, "0.0.0.0", async () => {

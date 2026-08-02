@@ -197,7 +197,7 @@ export class OmniConversationService {
   async assignAgent(id: string, agentId: string) {
     // Add agent as participant if not already there
     const participants = await this.participantRepo.findByConversationId(id);
-    const isAgentIn = participants.some(p => p.participantId === agentId);
+    const isAgentIn = participants.some((p: any) => p.participantId === agentId);
     
     if (!isAgentIn) {
       await this.participantRepo.create({

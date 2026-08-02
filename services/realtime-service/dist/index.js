@@ -1,16 +1,23 @@
 import http from "node:http";
 import { Server as SocketIOServer } from "socket.io";
 import { createServiceApp, startKafkaConsumer } from "@mymanager/node-service-kit";
-import { LiveChatChannelController, LiveChatMessageController, LiveChatContactController, LiveChatWidgetSettingController, LiveChatStatisticsController } from "./controllers/index.js";
+import { LiveChatChannelController, LiveChatMessageController, LiveChatContactController, LiveChatWidgetSettingController, LiveChatStatisticsController, OmniConversationController, OmniMessageController, OmniAIController, OmniAgentController, InboxCompatController } from "./controllers/index.js";
 import { identityMiddleware } from "./middleware/identity.js";
 const { app, logger } = createServiceApp({ serviceName: "realtime-service", jsonLimit: "10mb" });
 const auth = identityMiddleware;
 const cast = (req) => req;
+const route = (handler) => (req, res) => handler(cast(req), res);
 const channelCtrl = new LiveChatChannelController();
 const messageCtrl = new LiveChatMessageController();
 const contactCtrl = new LiveChatContactController();
 const widgetCtrl = new LiveChatWidgetSettingController();
 const statsCtrl = new LiveChatStatisticsController();
+const omniConvCtrl = new OmniConversationController();
+const omniMsgCtrl = new OmniMessageController();
+const omniAICtrl = new OmniAIController();
+const omniAgentCtrl = new OmniAgentController();
+const inboxCompatCtrl = new InboxCompatController();
+// --- Live Chat ---
 app.post("/v1/livechat/channels", auth, (req, res) => channelCtrl.getChannelsByAdminId(cast(req), res));
 app.get("/v1/livechat/channel/:channelId", auth, (req, res) => channelCtrl.getChannelById(cast(req), res));
 app.delete("/v1/livechat/channel/:channelId/:contactId", auth, (req, res) => channelCtrl.deleteChannel(cast(req), res));
@@ -23,9 +30,43 @@ app.get("/v1/livechat/widget-setting", auth, (req, res) => widgetCtrl.getSetting
 app.get("/v1/livechat/widget-setting/pub", (req, res) => widgetCtrl.getPublicSetting(cast(req), res));
 app.post("/v1/livechat/widget-setting/send-code", auth, (req, res) => widgetCtrl.sendCode(cast(req), res));
 app.get("/v1/livechat/statistics", auth, (req, res) => statsCtrl.getStatistics(cast(req), res));
+// --- Omni ---
+app.get("/v1/omni/conversations", auth, route(omniConvCtrl.getConversations.bind(omniConvCtrl)));
+app.get("/v1/omni/conversations/:conversationId", auth, route(omniConvCtrl.getConversationById.bind(omniConvCtrl)));
+app.post("/v1/omni/conversations/:conversationId/assign", auth, route(omniConvCtrl.assignAgent.bind(omniConvCtrl)));
+app.patch("/v1/omni/conversations/:conversationId", auth, route(omniConvCtrl.updateConversation.bind(omniConvCtrl)));
+app.get("/v1/omni/conversations/:conversationId/history", auth, route(omniMsgCtrl.getHistory.bind(omniMsgCtrl)));
+app.post("/v1/omni/messages", auth, route(omniMsgCtrl.addMessage.bind(omniMsgCtrl)));
+app.post("/v1/omni/ai/translate", auth, route(omniAICtrl.translate.bind(omniAICtrl)));
+app.post("/v1/omni/ai/suggest-reply", auth, route(omniAICtrl.suggestReply.bind(omniAICtrl)));
+// --- Agent Management ---
+app.post("/v1/agent/add_agent", auth, route(omniAgentCtrl.addAgent.bind(omniAgentCtrl)));
+app.post("/v1/agent/update_agent_in_chat", auth, route(omniAgentCtrl.updateAgentInChat.bind(omniAgentCtrl)));
+app.get("/v1/agent/get_my_assigned_chats", auth, route(omniAgentCtrl.getMyAssignedChats.bind(omniAgentCtrl)));
+app.get("/v1/agent/get_my_task", auth, route(omniAgentCtrl.getMyTask.bind(omniAgentCtrl)));
+app.post("/v1/agent/create_task", auth, route(omniAgentCtrl.createMyTask.bind(omniAgentCtrl)));
+app.patch("/v1/agent/update_task", auth, route(omniAgentCtrl.updateMyTask.bind(omniAgentCtrl)));
+app.post("/v1/agent/complete_task", auth, route(omniAgentCtrl.completeMyTask.bind(omniAgentCtrl)));
+app.delete("/v1/agent/delete_task", auth, route(omniAgentCtrl.deleteMyTask.bind(omniAgentCtrl)));
+// --- Inbox compatibility ---
+app.get("/v1/inbox/get_chats", auth, route(inboxCompatCtrl.getChats.bind(inboxCompatCtrl)));
+app.post("/v1/inbox/get_convo", auth, route(inboxCompatCtrl.getConvo.bind(inboxCompatCtrl)));
+app.post("/v1/inbox/send_text", auth, route(inboxCompatCtrl.sendText.bind(inboxCompatCtrl)));
+app.post("/v1/inbox/send_image", auth, route(inboxCompatCtrl.sendImage.bind(inboxCompatCtrl)));
+app.all("/v1/inbox/webhook/:uid", route(inboxCompatCtrl.webhook.bind(inboxCompatCtrl)));
+// --- Notifications (Dummy) ---
+app.get("/v1/notifications", auth, (req, res) => res.json({ data: [], total: 0 }));
+app.get("/v1/notifications/total", auth, (req, res) => res.json({ data: { all: 0, unread: 0, archived: 0, categories: [] } }));
+app.post("/v1/notifications/read", auth, (req, res) => res.json({ success: true }));
+app.post("/v1/notifications/archive", auth, (req, res) => res.json({ success: true }));
+app.post("/v1/notifications/unarchive", auth, (req, res) => res.json({ success: true }));
+app.post("/v1/notifications/mark-seen/:id/:userId", auth, (req, res) => res.json({ success: true }));
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
-    cors: { origin: "*" }
+    cors: {
+        origin: process.env.ALLOWED_ORIGIN || "*",
+        credentials: true
+    }
 });
 io.on("connection", (socket) => {
     logger.info({ id: socket.id }, "socket connected");
@@ -37,14 +78,34 @@ io.on("connection", (socket) => {
         socket.join(`channel:${channelId}`);
         logger.info({ socketId: socket.id, channelId }, "socket joined channel room");
     });
-    socket.on("send-message", (data) => {
-        io.to(`channel:${data.channelId}`).emit("new-message", data.message);
+    // --- CRM Collaboration ---
+    socket.on("join-contact", (data) => {
+        const { contactId, userId, userName } = data;
+        socket.join(`contact:${contactId}`);
+        // Notify others in the room that someone is viewing
+        socket.to(`contact:${contactId}`).emit("contact:presence", {
+            contactId,
+            userId,
+            userName,
+            action: 'viewing'
+        });
+        logger.info({ socketId: socket.id, contactId, userId }, "socket joined contact room");
     });
-    socket.on("typing", (data) => {
-        socket.to(`channel:${data.channelId}`).emit("user-typing", data);
+    socket.on("contact:editing", (data) => {
+        socket.to(`contact:${data.contactId}`).emit("contact:presence", {
+            ...data,
+            action: 'editing'
+        });
     });
-    socket.on("mark-read", (data) => {
-        io.to(`channel:${data.channelId}`).emit("messages-read", data);
+    socket.on("contact:update", (data) => {
+        // Broadcast to everyone in the contact room (including sender if needed, but usually sender already has it)
+        io.to(`contact:${data.contactId}`).emit("contact:updated", data);
+        // Also broadcast to the org room for list view updates
+        const rooms = Array.from(socket.rooms);
+        const orgRoom = rooms.find(r => r.startsWith('org:'));
+        if (orgRoom) {
+            io.to(orgRoom).emit("contact:list-updated", data);
+        }
     });
     socket.emit("hello", { message: "connected to realtime-service" });
     socket.on("disconnect", () => logger.info({ id: socket.id }, "socket disconnected"));
@@ -55,10 +116,39 @@ async function startConsumer() {
         clientId: "realtime-service",
         brokers,
         groupId: "realtime-service.domain-events",
-        topics: ["billing.payment.recorded"],
+        topics: ["billing.payment.recorded", "omni.message.received"],
         logger,
         onMessage: async ({ topic, payload }) => {
-            io.emit("domain-event", { routingKey: topic, data: payload });
+            if (topic === "omni.message.received") {
+                const event = payload;
+                logger.info({ event }, "Processing incoming omni message");
+                try {
+                    // Handle inbound message logic
+                    // 1. Find or create contact
+                    let contact = await contactCtrl.findOrCreateByPhone(event.contactMobile, event.organizationId, event.contactName);
+                    // 2. Find or create conversation
+                    let conversation = await omniConvCtrl.findOrCreateByContact(contact.id, event.organizationId, event.provider, event.contactMobile);
+                    // 3. Add message
+                    const message = await omniMsgCtrl.addInboundMessage({
+                        conversationId: conversation.id,
+                        senderId: contact.id,
+                        content: event.content,
+                        type: event.type,
+                        metadata: event.metadata
+                    });
+                    // 4. Push to sockets
+                    io.to(`org:${event.organizationId}`).emit("omni:message", {
+                        conversationId: conversation.id,
+                        message
+                    });
+                }
+                catch (err) {
+                    logger.error({ err }, "Failed to process inbound omni message");
+                }
+            }
+            else {
+                io.emit("domain-event", { routingKey: topic, data: payload });
+            }
         },
     });
 }
