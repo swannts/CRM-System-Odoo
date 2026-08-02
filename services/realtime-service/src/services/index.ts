@@ -1,16 +1,18 @@
 import { 
-  LiveChatChannelRepository, 
-  LiveChatMessageRepository, 
+  LiveChatChannelRepository,
+  LiveChatMessageRepository,
   LiveChatContactRepository,
   LiveChatWidgetSettingRepository,
   LiveChatStatisticsRepository,
-  SocketConnectionRepository,
+  SocketConnectionRepository
+} from '../repositories/livechat/index.js';
+import {
   OmniConversationRepository,
   OmniMessageRepository,
   OmniParticipantRepository,
   OmniAgentRepository,
   OmniAgentTaskRepository
-} from '../repositories/index.js';
+} from '../repositories/omni/index.js';
 import type { 
   LiveChatChannelInput, 
   LiveChatMessageInput, 
