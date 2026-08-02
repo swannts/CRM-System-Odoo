@@ -169,17 +169,32 @@ function getForwardHeaders(req: Request) {
   };
 }
 
-async function fetchUpstreamJson(req: Request, url: string) {
-  const upstream = await fetch(url, {
-    method: "GET",
-    headers: getForwardHeaders(req),
-  });
+async function fetchUpstreamJson(req: Request, url: string, timeoutMs: number = 15000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!upstream.ok) {
-    throw new Error(`Upstream failed (${upstream.status}) for ${url}`);
+  try {
+    const upstream = await fetch(url, {
+      method: "GET",
+      headers: getForwardHeaders(req),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!upstream.ok) {
+      throw new Error(`Upstream failed (${upstream.status}) for ${url}`);
+    }
+
+    return await upstream.json();
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    logger.error({ err: error, url, timeoutMs }, "Upstream fetch failed");
+    if (error.name === "AbortError") {
+      throw new Error(`Upstream request timed out after ${timeoutMs}ms for ${url}`);
+    }
+    throw error;
   }
-
-  return upstream.json();
 }
 
 async function fetchUpstreamJsonSafe(req: Request, url: string) {
