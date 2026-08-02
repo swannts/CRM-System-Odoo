@@ -229,26 +229,39 @@ export class OdooClientService {
       return records;
     }
 
+    const MAX_RECURSION = 100;
+    const MAX_ITERATIONS = 1000;
+
     return records.filter((record) => {
       let cursor = 0;
+      let iterations = 0;
 
-      const evalNode = (): boolean => {
+      const evalNode = (depth = 0): boolean => {
+        if (depth > MAX_RECURSION) {
+          this.logger.error('Domain recursion limit exceeded');
+          return true;
+        }
+
+        if (cursor >= domain.length) {
+          return true;
+        }
+
         const token = domain[cursor++];
 
         if (token === '|') {
-          const left = evalNode();
-          const right = evalNode();
+          const left = evalNode(depth + 1);
+          const right = evalNode(depth + 1);
           return left || right;
         }
 
         if (token === '&') {
-          const left = evalNode();
-          const right = evalNode();
+          const left = evalNode(depth + 1);
+          const right = evalNode(depth + 1);
           return left && right;
         }
 
         if (token === '!') {
-          return !evalNode();
+          return !evalNode(depth + 1);
         }
 
         if (Array.isArray(token)) {
@@ -260,8 +273,13 @@ export class OdooClientService {
 
       // Odoo domains without explicit operators are AND-ed.
       let result = true;
-      while (cursor < domain.length) {
+      while (cursor < domain.length && iterations < MAX_ITERATIONS) {
+        iterations++;
         result = result && evalNode();
+      }
+
+      if (iterations >= MAX_ITERATIONS) {
+        this.logger.error('Domain iteration limit exceeded');
       }
 
       return result;
