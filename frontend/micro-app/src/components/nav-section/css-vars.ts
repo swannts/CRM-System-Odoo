@@ -1,3 +1,5 @@
+import type { Theme } from 'src/theme/types';
+
 import { varAlpha } from 'src/theme/styles';
 
 // ----------------------------------------------------------------------
@@ -7,7 +9,9 @@ export const bulletColor = {
   light: '#EDEFF2',
 };
 
-function colorVars(theme, variant) {
+type NavVariant = 'vertical' | 'mini' | 'horizontal';
+
+function colorVars(theme: Theme, variant: NavVariant) {
   const {
     vars: { palette },
   } = theme;
@@ -38,7 +42,7 @@ function colorVars(theme, variant) {
 
 // ----------------------------------------------------------------------
 
-function verticalVars(theme) {
+function verticalVars(theme: Theme) {
   const { shape, spacing } = theme;
 
   return {
@@ -65,7 +69,7 @@ function verticalVars(theme) {
 
 // ----------------------------------------------------------------------
 
-function miniVars(theme) {
+function miniVars(theme: Theme) {
   const { shape, spacing } = theme;
 
   return {
@@ -87,7 +91,7 @@ function miniVars(theme) {
 
 // ----------------------------------------------------------------------
 
-function horizontalVars(theme) {
+function horizontalVars(theme: Theme) {
   const { shape, spacing } = theme;
 
   return {

@@ -7,6 +7,19 @@ import { layoutClasses } from '../classes';
 
 // ----------------------------------------------------------------------
 
+import type { SxProps, Theme } from '@mui/material/styles';
+
+// ----------------------------------------------------------------------
+
+type Props = {
+  sx?: SxProps<Theme>;
+  cssVars?: Record<string, string | number | any>;
+  children: React.ReactNode;
+  footerSection?: React.ReactNode;
+  headerSection?: React.ReactNode;
+  sidebarSection?: React.ReactNode;
+};
+
 export function LayoutSection({
   sx,
   cssVars,
@@ -14,7 +27,7 @@ export function LayoutSection({
   footerSection,
   headerSection,
   sidebarSection,
-}) {
+}: Props) {
   const inputGlobalStyles = (
     <GlobalStyles
       styles={{

@@ -13,12 +13,12 @@ import { getInitColorSchemeScript } from 'src/theme/color-scheme-script';
 
 import { ToastProvider } from 'src/components/toast';
 import { ProgressBar } from 'src/components/progress-bar';
-import QueryProvider from 'src/components/query-provider';
 import { MotionLazy } from 'src/components/animate/motion-lazy';
 import { detectSettings } from 'src/components/settings/server';
 import { SettingsDrawer, defaultSettings, SettingsProvider } from 'src/components/settings';
 
 import { AuthProvider } from 'src/auth/context/auth-provider';
+import ReduxProvider from 'src/store/redux-provider';
 
 
 // ----------------------------------------------------------------------
@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
         {getInitColorSchemeScript}
 
         <AuthProvider>
-          <QueryProvider>
+          <ReduxProvider>
             <SettingsProvider
               settings={settings}
               caches={CONFIG.isStaticExport ? 'localStorage' : 'cookie'}
@@ -58,7 +58,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
 
               </ThemeProvider>
             </SettingsProvider>
-          </QueryProvider>
+          </ReduxProvider>
         </AuthProvider>
       </body>
     </html>

@@ -33,10 +33,16 @@ import { navData as dashboardNavData } from '../config-nav-dashboard';
 
 // ----------------------------------------------------------------------
 
+import type { SxProps, Theme } from '@mui/material/styles';
+
+// ----------------------------------------------------------------------
+
 interface DashboardLayoutProps {
-  sx?: any;
+  sx?: SxProps<Theme>;
   children: ReactNode;
-  data?: any;
+  data?: {
+    nav?: any[];
+  };
 }
 
 export function DashboardLayout({ sx, children, data }: DashboardLayoutProps) {
@@ -249,7 +255,7 @@ export function DashboardLayout({ sx, children, data }: DashboardLayoutProps) {
 
 // ----------------------------------------------------------------------
 
-function useNavColorVars(theme, settings) {
+function useNavColorVars(theme: Theme, settings: any) {
   const {
     vars: { palette },
   } = theme;

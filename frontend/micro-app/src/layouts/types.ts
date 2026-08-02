@@ -8,7 +8,10 @@ export type NavItem = {
   title: string;
   path: NavPath;
   icon?: NavIcon;
+  info?: ReactNode;
+  caption?: string;
   disabled?: boolean;
+  roles?: string[];
   children?: NavItem[];
 };
 
