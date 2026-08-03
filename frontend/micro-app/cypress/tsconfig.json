@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
-    "target": "es5",
-    "lib": ["es5", "dom"],
+    "target": "es2018",
+    "lib": ["es2018", "dom"],
     "types": ["cypress", "node"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "baseUrl": "../",
     "paths": {
       "src/*": ["./src/*"]
     }
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts", "**/*.d.ts"]
 }

@@ -16,5 +16,13 @@
 // Import commands.js using ES2015 syntax:
 import './commands';
 
+Cypress.on('uncaught:exception', (error) => {
+  if (String(error.message || error).includes('NEXT_REDIRECT')) {
+    return false;
+  }
+
+  return undefined;
+});
+
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
