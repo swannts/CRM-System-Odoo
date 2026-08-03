@@ -130,6 +130,8 @@ export function EmployeesWorkspaceView() {
     });
   }, [employees.data, department, employmentType]);
 
+  const departmentRows = Array.isArray(departments.data) ? departments.data : [];
+
   const openCreateDialog = () => {
     setForm({ firstName: '', lastName: '', email: '', phone: '', jobTitle: '', departmentId: '' });
     setOpenCreate(true);
@@ -328,7 +330,7 @@ export function EmployeesWorkspaceView() {
               <InputLabel>Department</InputLabel>
               <Select value={department} label="Department" onChange={(e) => setDepartment(String(e.target.value))}>
                 <MenuItem value="all">All departments</MenuItem>
-                {(departments.data || []).map((d: any) => (
+                {departmentRows.map((d: any) => (
                   <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
                 ))}
               </Select>
@@ -356,12 +358,12 @@ export function EmployeesWorkspaceView() {
         <Card sx={{ p: 2.5 }}>
           {departments.loading && <CircularProgress />}
           {departments.error && <EmployeesUnavailableState title="Departments unavailable" description="Department management endpoint is currently unavailable." />}
-          {!departments.loading && !departments.error && (departments.data || []).length === 0 && (
+          {!departments.loading && !departments.error && departmentRows.length === 0 && (
             <EmployeesEmptyState title="No departments" description="Create a department to organize employees." />
           )}
-          {!departments.loading && !departments.error && (departments.data || []).length > 0 && (
+          {!departments.loading && !departments.error && departmentRows.length > 0 && (
             <Stack spacing={1}>
-              {departments.data?.map((d: any) => (
+              {departmentRows.map((d: any) => (
                 <Card key={d.id} variant="outlined" sx={{ p: 1.5 }}>
                   <Typography variant="subtitle2">{d.name}</Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>

@@ -49,7 +49,7 @@ export function EmployeesDirectoryTable({ rows, onEdit, onArchive }: Props) {
               <TableCell>{employee.jobTitle || 'Unavailable'}</TableCell>
               <TableCell>{employee.departmentName || 'Unavailable'}</TableCell>
               <TableCell>
-                <Chip size="small" label={employee.status.replace('_', ' ')} />
+                <Chip size="small" label={employee.status ? employee.status.replace('_', ' ') : 'Unavailable'} />
               </TableCell>
               <TableCell>{employee.employmentType ? employee.employmentType.replace('_', ' ') : 'Unavailable'}</TableCell>
               <TableCell>{employee.startDate || 'Unavailable'}</TableCell>

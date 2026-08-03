@@ -1,4 +1,8 @@
-import type { ICommerceCoupon, ICommerceProduct, ICommerceInventoryItem } from 'src/services/commerce-service';
+import type {
+  ICommerceCoupon,
+  ICommerceProduct,
+  ICommerceInventoryItem,
+} from 'src/services/commerce-service';
 
 import Link from 'next/link';
 import { useState } from 'react';
@@ -9,16 +13,15 @@ import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Tabs from '@mui/material/Tabs';
+import Menu from '@mui/material/Menu';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
-import Autocomplete from '@mui/material/Autocomplete';
-import Tooltip from '@mui/material/Tooltip';
 import Dialog from '@mui/material/Dialog';
+import Tooltip from '@mui/material/Tooltip';
 import Divider from '@mui/material/Divider';
-import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import TableRow from '@mui/material/TableRow';
 import Checkbox from '@mui/material/Checkbox';
@@ -29,6 +32,7 @@ import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import DialogTitle from '@mui/material/DialogTitle';
+import Autocomplete from '@mui/material/Autocomplete';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import InputAdornment from '@mui/material/InputAdornment';
@@ -44,6 +48,7 @@ import { fCurrency } from 'src/utils/format-number';
 import { Iconify } from 'src/components/iconify';
 import { Form, RHFTextField } from 'src/components/hook-form';
 
+import { COMMERCE_DASHBOARD_MODULES } from './commerce-workspace.types';
 import {
   getBasePrice,
   getProductHref,
@@ -55,16 +60,26 @@ import {
   getStorefrontHomeHref,
 } from './commerce-workspace.utils';
 
-import { COMMERCE_DASHBOARD_MODULES } from './commerce-workspace.types';
-import type { CartLine, LocalOrder, ProductFormValues, CommerceDashboardModule } from './commerce-workspace.types';
+import type {
+  CartLine,
+  LocalOrder,
+  ProductFormValues,
+  CommerceDashboardModule,
+} from './commerce-workspace.types';
+import {event} from "next/dist/build/output/log";
 
 type SummaryCardsProps = {
   products: ICommerceProduct[];
   orders: LocalOrder[];
-  cartItems: CartLine[];
+  cartItems?: CartLine[];
 };
 
-export function CommerceSummaryCards({ products, orders, cartItems, topProducts }: SummaryCardsProps & { topProducts?: any[] }) {
+export function CommerceSummaryCards({
+  products,
+  orders,
+  cartItems = [],
+  topProducts,
+}: SummaryCardsProps & { topProducts?: any[] }) {
   const grossRevenueCents = orders.reduce((sum, item) => sum + (item.totalAmountCents || 0), 0);
   const paidOrders = orders.filter((item) =>
     ['paid', 'complete', 'completed'].includes(String(item.paymentStatus || '').toLowerCase())
@@ -76,7 +91,9 @@ export function CommerceSummaryCards({ products, orders, cartItems, topProducts 
       .map((item) => {
         const shipping = item.shippingAddress as Record<string, any> | undefined;
         const email = shipping?.email ? String(shipping.email).toLowerCase() : '';
-        const fallbackName = shipping?.customerName ? String(shipping.customerName).toLowerCase() : '';
+        const fallbackName = shipping?.customerName
+          ? String(shipping.customerName).toLowerCase()
+          : '';
         return email || fallbackName || '';
       })
       .filter(Boolean)
@@ -87,7 +104,9 @@ export function CommerceSummaryCards({ products, orders, cartItems, topProducts 
     {
       label: 'Pending',
       color: 'warning' as const,
-      count: orders.filter((item) => ['pending', 'new', 'pending_payment'].includes(item.status.toLowerCase())).length,
+      count: orders.filter((item) =>
+        ['pending', 'new', 'pending_payment'].includes(item.status.toLowerCase())
+      ).length,
     },
     {
       label: 'Processing',
@@ -97,12 +116,16 @@ export function CommerceSummaryCards({ products, orders, cartItems, topProducts 
     {
       label: 'Completed',
       color: 'success' as const,
-      count: orders.filter((item) => ['complete', 'completed', 'paid'].includes(item.status.toLowerCase())).length,
+      count: orders.filter((item) =>
+        ['complete', 'completed', 'paid'].includes(item.status.toLowerCase())
+      ).length,
     },
     {
       label: 'Cancelled',
       color: 'error' as const,
-      count: orders.filter((item) => ['cancelled', 'closed', 'canceled', 'failed'].includes(item.status.toLowerCase())).length,
+      count: orders.filter((item) =>
+        ['cancelled', 'closed', 'canceled', 'failed'].includes(item.status.toLowerCase())
+      ).length,
     },
   ];
 
@@ -190,17 +213,30 @@ export function CommerceSummaryCards({ products, orders, cartItems, topProducts 
             </Typography>
             <Stack spacing={2}>
               {statusGroups.map((group) => {
-                const percentage = orders.length ? Math.round((group.count / orders.length) * 100) : 0;
+                const percentage = orders.length
+                  ? Math.round((group.count / orders.length) * 100)
+                  : 0;
                 return (
                   <Stack key={group.label} spacing={0.75}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                       <Typography variant="body2">{group.label}</Typography>
-                      <Chip size="small" color={group.color} label={`${group.count} (${percentage}%)`} variant="soft" />
+                      <Chip
+                        size="small"
+                        color={group.color}
+                        label={`${group.count} (${percentage}%)`}
+                        variant="soft"
+                      />
                     </Stack>
                     <LinearProgress
                       variant="determinate"
                       value={percentage}
-                      color={group.color === 'error' ? 'error' : group.color === 'success' ? 'success' : 'primary'}
+                      color={
+                        group.color === 'error'
+                          ? 'error'
+                          : group.color === 'success'
+                            ? 'success'
+                            : 'primary'
+                      }
                     />
                   </Stack>
                 );
@@ -238,8 +274,15 @@ export function CommerceSummaryCards({ products, orders, cartItems, topProducts 
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={1.25} alignItems="center">
-                      <Chip size="small" label={order.status} color={orderStatusColor(order.status)} variant="outlined" />
-                      <Typography variant="subtitle2">{fCurrency((order.totalAmountCents || 0) / 100)}</Typography>
+                      <Chip
+                        size="small"
+                        label={order.status}
+                        color={orderStatusColor(order.status)}
+                        variant="outlined"
+                      />
+                      <Typography variant="subtitle2">
+                        {fCurrency((order.totalAmountCents || 0) / 100)}
+                      </Typography>
                     </Stack>
                   </Stack>
                 ))
@@ -251,19 +294,37 @@ export function CommerceSummaryCards({ products, orders, cartItems, topProducts 
 
       {topProducts && topProducts.length > 0 && (
         <Card sx={{ p: 3 }}>
-           <Typography variant="h6" sx={{ mb: 2 }}>Top Selling Products</Typography>
-           <Stack spacing={2}>
-              {topProducts.map((p, index) => (
-                 <Stack key={p.name} direction="row" alignItems="center" spacing={2}>
-                    <Box sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: 'background.neutral', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 'bold' }}>
-                       {index + 1}
-                    </Box>
-                    <Typography variant="body2" sx={{ flexGrow: 1 }}>{p.name}</Typography>
-                    <Typography variant="subtitle2">{fCurrency(p.revenue / 100)}</Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>({p.quantity} sold)</Typography>
-                 </Stack>
-              ))}
-           </Stack>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            Top Selling Products
+          </Typography>
+          <Stack spacing={2}>
+            {topProducts.map((p, index) => (
+              <Stack key={p.name} direction="row" alignItems="center" spacing={2}>
+                <Box
+                  sx={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    bgcolor: 'background.neutral',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {index + 1}
+                </Box>
+                <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                  {p.name}
+                </Typography>
+                <Typography variant="subtitle2">{fCurrency(p.revenue / 100)}</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  ({p.quantity} sold)
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
         </Card>
       )}
     </Stack>
@@ -337,9 +398,14 @@ export function CommerceProductsTable({
     const threshold = product.lowStockThreshold || 5;
     return product.variants?.length ? inventory > 0 && inventory <= threshold : false;
   }).length;
-  const [inventoryDrafts, setInventoryDrafts] = useState<Record<string, { qty: string; sourceCode: string }>>({});
-  const [inventoryQuickEditTarget, setInventoryQuickEditTarget] = useState<ICommerceProduct | null>(null);
-  const hasActiveFilters = Boolean(search.trim()) || categoryFilter !== 'all' || statusFilter !== 'all';
+  const [inventoryDrafts, setInventoryDrafts] = useState<
+    Record<string, { qty: string; sourceCode: string }>
+  >({});
+  const [inventoryQuickEditTarget, setInventoryQuickEditTarget] = useState<ICommerceProduct | null>(
+    null
+  );
+  const hasActiveFilters =
+    Boolean(search.trim()) || categoryFilter !== 'all' || statusFilter !== 'all';
   const [actionsAnchorEl, setActionsAnchorEl] = useState<null | HTMLElement>(null);
   const [activeActionProduct, setActiveActionProduct] = useState<ICommerceProduct | null>(null);
   const actionsMenuOpen = Boolean(actionsAnchorEl && activeActionProduct);
@@ -356,22 +422,44 @@ export function CommerceProductsTable({
 
   return (
     <Card sx={{ overflow: 'hidden' }}>
-      <Stack
-        spacing={2.25}
-        sx={{ p: 3 }}
-      >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+      <Stack spacing={2.25} sx={{ p: 3 }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          justifyContent="space-between"
+          alignItems={{ xs: 'stretch', md: 'flex-start' }}
+        >
           <Box>
             <Typography variant="h5">Catalog</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               Create and review the products sold through your shop.
             </Typography>
             <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap' }} useFlexGap>
-              <Chip size="small" label={`${filteredProducts.length} shown`} variant="soft" color="default" />
-              <Chip size="small" label={`${activeProducts} active`} variant="soft" color="success" />
-              <Chip size="small" label={`${lowStockProducts} low stock`} variant="soft" color={lowStockProducts ? 'warning' : 'default'} />
+              <Chip
+                size="small"
+                label={`${filteredProducts.length} shown`}
+                variant="soft"
+                color="default"
+              />
+              <Chip
+                size="small"
+                label={`${activeProducts} active`}
+                variant="soft"
+                color="success"
+              />
+              <Chip
+                size="small"
+                label={`${lowStockProducts} low stock`}
+                variant="soft"
+                color={lowStockProducts ? 'warning' : 'default'}
+              />
               {selectedIds.length > 0 && (
-                <Chip size="small" label={`${selectedIds.length} selected`} variant="soft" color="info" />
+                <Chip
+                  size="small"
+                  label={`${selectedIds.length} selected`}
+                  variant="soft"
+                  color="info"
+                />
               )}
             </Stack>
           </Box>
@@ -380,22 +468,52 @@ export function CommerceProductsTable({
               <>
                 {enableBulkStatusActions && (
                   <>
-                    <Button size="small" color="success" variant="outlined" onClick={onBulkActivate} disabled={isBulkUpdating || isBulkDeleting}>Activate ({selectedIds.length})</Button>
-                    <Button size="small" color="warning" variant="outlined" onClick={onBulkArchive} disabled={isBulkUpdating || isBulkDeleting}>Archive</Button>
+                    <Button
+                      size="small"
+                      color="success"
+                      variant="outlined"
+                      onClick={onBulkActivate}
+                      disabled={isBulkUpdating || isBulkDeleting}
+                    >
+                      Activate ({selectedIds.length})
+                    </Button>
+                    <Button
+                      size="small"
+                      color="warning"
+                      variant="outlined"
+                      onClick={onBulkArchive}
+                      disabled={isBulkUpdating || isBulkDeleting}
+                    >
+                      Archive
+                    </Button>
                   </>
                 )}
-                <Button size="small" color="error" variant="outlined" onClick={onBulkDelete} disabled={isBulkDeleting || isBulkUpdating}>
+                <Button
+                  size="small"
+                  color="error"
+                  variant="outlined"
+                  onClick={onBulkDelete}
+                  disabled={isBulkDeleting || isBulkUpdating}
+                >
                   {isBulkDeleting ? 'Deleting...' : 'Delete'}
                 </Button>
               </>
             )}
-            <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={onCreate}>
+            <Button
+              variant="contained"
+              startIcon={<Iconify icon="mingcute:add-line" />}
+              onClick={onCreate}
+            >
               New product
             </Button>
           </Stack>
         </Stack>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={1.5}
+          alignItems={{ xs: 'stretch', md: 'center' }}
+        >
           <TextField
             size="small"
             placeholder="Search products"
@@ -467,9 +585,17 @@ export function CommerceProductsTable({
       >
         <Grid container spacing={2}>
           {[
-            { label: 'Visible products', value: filteredProducts.length, helper: 'Results in the current view' },
+            {
+              label: 'Visible products',
+              value: filteredProducts.length,
+              helper: 'Results in the current view',
+            },
             { label: 'Active listings', value: activeProducts, helper: 'Products ready for sale' },
-            { label: 'Low stock alerts', value: lowStockProducts, helper: 'Tracked variants below threshold' },
+            {
+              label: 'Low stock alerts',
+              value: lowStockProducts,
+              helper: 'Tracked variants below threshold',
+            },
           ].map((item) => (
             <Grid key={item.label} item xs={12} md={4}>
               <Stack spacing={0.25}>
@@ -491,9 +617,18 @@ export function CommerceProductsTable({
             <TableRow>
               <TableCell padding="checkbox">
                 <Checkbox
-                  indeterminate={selectedIds.length > 0 && selectedIds.length < filteredProducts.length}
-                  checked={filteredProducts.length > 0 && selectedIds.length === filteredProducts.length}
-                  onChange={(event) => onToggleSelectAll(filteredProducts.map((p) => p.id), event.target.checked)}
+                  indeterminate={
+                    selectedIds.length > 0 && selectedIds.length < filteredProducts.length
+                  }
+                  checked={
+                    filteredProducts.length > 0 && selectedIds.length === filteredProducts.length
+                  }
+                  onChange={(event) =>
+                    onToggleSelectAll(
+                      filteredProducts.map((p) => p.id),
+                      event.target.checked
+                    )
+                  }
                 />
               </TableCell>
               <TableCell>Product</TableCell>
@@ -521,7 +656,10 @@ export function CommerceProductsTable({
                   }}
                 >
                   <TableCell padding="checkbox">
-                    <Checkbox checked={selectedIds.includes(product.id)} onChange={() => onToggleSelect(product.id)} />
+                    <Checkbox
+                      checked={selectedIds.includes(product.id)}
+                      onChange={() => onToggleSelect(product.id)}
+                    />
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={2} alignItems="center">
@@ -554,19 +692,29 @@ export function CommerceProductsTable({
                           {product.description || 'No description provided yet.'}
                         </Typography>
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                          <Chip size="small" label={product.sku || 'No SKU'} variant="soft" color="default" />
+                          <Chip
+                            size="small"
+                            label={product.sku || 'No SKU'}
+                            variant="soft"
+                            color="default"
+                          />
                           {product.photos?.length ? (
-                            <Chip size="small" label={`${product.photos.length} image${product.photos.length > 1 ? 's' : ''}`} variant="soft" color="info" />
+                            <Chip
+                              size="small"
+                              label={`${product.photos.length} image${product.photos.length > 1 ? 's' : ''}`}
+                              variant="soft"
+                              color="info"
+                            />
                           ) : null}
                         </Stack>
                       </Stack>
                     </Stack>
                   </TableCell>
                   <TableCell>
-                      <Stack spacing={0.75}>
-                        <Typography variant="body2">
-                          SKU: <strong>{product.sku || 'Not set'}</strong>
-                        </Typography>
+                    <Stack spacing={0.75}>
+                      <Typography variant="body2">
+                        SKU: <strong>{product.sku || 'Not set'}</strong>
+                      </Typography>
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                         Category: {product.categoryName || 'Uncategorized'}
                       </Typography>
@@ -576,7 +724,11 @@ export function CommerceProductsTable({
                             <Chip key={tag} size="small" label={tag} variant="outlined" />
                           ))}
                           {product.tags.length > 2 && (
-                            <Chip size="small" label={`+${product.tags.length - 2}`} variant="outlined" />
+                            <Chip
+                              size="small"
+                              label={`+${product.tags.length - 2}`}
+                              variant="outlined"
+                            />
                           )}
                         </Stack>
                       ) : (
@@ -605,9 +757,14 @@ export function CommerceProductsTable({
                   </TableCell>
                   <TableCell>
                     <Stack spacing={0.5}>
-                      <Typography variant="subtitle2">{fCurrency(getBasePrice(product) / 100)}</Typography>
+                      <Typography variant="subtitle2">
+                        {fCurrency(getBasePrice(product) / 100)}
+                      </Typography>
                       {(product.compareAtPriceCents || 0) > getBasePrice(product) && (
-                        <Typography variant="caption" sx={{ color: 'text.secondary', textDecoration: 'line-through' }}>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: 'text.secondary', textDecoration: 'line-through' }}
+                        >
                           {fCurrency((product.compareAtPriceCents || 0) / 100)}
                         </Typography>
                       )}
@@ -632,7 +789,7 @@ export function CommerceProductsTable({
                             fontWeight: 600,
                             '&:hover': {
                               opacity: 0.72,
-                            }
+                            },
                           }}
                         />
                       </Tooltip>
@@ -681,7 +838,9 @@ export function CommerceProductsTable({
                   </Box>
                   <Typography variant="subtitle1">No products found.</Typography>
                   <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {hasActiveFilters ? 'Try resetting filters or search terms.' : 'Create your first product to get started.'}
+                    {hasActiveFilters
+                      ? 'Try resetting filters or search terms.'
+                      : 'Create your first product to get started.'}
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -846,6 +1005,7 @@ type InventoryTableProps = {
   totalRows: number;
   onPageChange: (page: number) => void;
   onRowsPerPageChange: (pageSize: number) => void;
+  inventory?: any;
 };
 
 export function CommerceInventoryTable({
@@ -865,6 +1025,7 @@ export function CommerceInventoryTable({
   totalRows,
   onPageChange,
   onRowsPerPageChange,
+  inventory,
 }: InventoryTableProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [newInventory, setNewInventory] = useState({
@@ -875,7 +1036,9 @@ export function CommerceInventoryTable({
   const [editItem, setEditItem] = useState<ICommerceInventoryItem | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [createTouched, setCreateTouched] = useState(false);
-  const lowStockCount = items.filter((item) => item.availableQuantity > 0 && item.availableQuantity <= 5).length;
+  const lowStockCount = items.filter(
+    (item) => item.availableQuantity > 0 && item.availableQuantity <= 5
+  ).length;
   const selectedCreateProduct = products.find((p) => p.id === newInventory.productId) || null;
   const selectedCreateLocation = locations.find((l) => l.id === newInventory.locationId) || null;
   const createQuantityNumber = Number(newInventory.quantity);
@@ -895,7 +1058,12 @@ export function CommerceInventoryTable({
   return (
     <Card sx={{ overflow: 'hidden' }}>
       <Stack spacing={2.25} sx={{ p: 3 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          justifyContent="space-between"
+          alignItems={{ xs: 'stretch', md: 'flex-start' }}
+        >
           <Box>
             <Typography variant="h5">Inventory</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -903,7 +1071,12 @@ export function CommerceInventoryTable({
             </Typography>
             <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap' }} useFlexGap>
               <Chip size="small" label={`${items.length} records`} variant="soft" color="default" />
-              <Chip size="small" label={`${lowStockCount} low stock`} variant="soft" color={lowStockCount ? 'warning' : 'default'} />
+              <Chip
+                size="small"
+                label={`${lowStockCount} low stock`}
+                variant="soft"
+                color={lowStockCount ? 'warning' : 'default'}
+              />
             </Stack>
           </Box>
         </Stack>
@@ -922,7 +1095,11 @@ export function CommerceInventoryTable({
           }}
           sx={{ maxWidth: 360 }}
         />
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={1.5}
+          alignItems={{ xs: 'stretch', md: 'center' }}
+        >
           <Autocomplete
             size="small"
             options={products}
@@ -966,7 +1143,9 @@ export function CommerceInventoryTable({
             label="Quantity"
             type="number"
             value={newInventory.quantity}
-            onChange={(event) => setNewInventory((prev) => ({ ...prev, quantity: event.target.value }))}
+            onChange={(event) =>
+              setNewInventory((prev) => ({ ...prev, quantity: event.target.value }))
+            }
             sx={{ maxWidth: 130 }}
             error={createQuantityError}
             helperText={createQuantityError ? 'Enter a quantity >= 0.' : ' '}
@@ -1019,13 +1198,21 @@ export function CommerceInventoryTable({
                 </TableCell>
                 <TableCell>{item.locationName || '-'}</TableCell>
                 <TableCell>
-                  <Chip size="small" label={item.sourceCode || 'default'} color="primary" variant="outlined" />
+                  <Chip
+                    size="small"
+                    label={item.sourceCode || 'default'}
+                    color="primary"
+                    variant="outlined"
+                  />
                 </TableCell>
                 <TableCell>{item.reservedQuantity}</TableCell>
                 <TableCell>
                   <Typography
                     variant="body2"
-                    sx={{ color: item.availableQuantity <= 5 ? 'warning.main' : 'success.main', fontWeight: 600 }}
+                    sx={{
+                      color: item.availableQuantity <= 5 ? 'warning.main' : 'success.main',
+                      fontWeight: 600,
+                    }}
                   >
                     {item.availableQuantity}
                   </Typography>
@@ -1044,20 +1231,28 @@ export function CommerceInventoryTable({
                       sx={{
                         cursor: 'pointer',
                         fontWeight: 600,
-                        '&:hover': { opacity: 0.72 }
+                        '&:hover': { opacity: 0.72 },
                       }}
                     />
                   </Tooltip>
                 </TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <IconButton size="small" color="primary" onClick={() => {
-                      setEditItem(item);
-                      setDrafts((prev) => ({ ...prev, [item.id]: String(item.quantity) }));
-                    }}>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => {
+                        setEditItem(item);
+                        setDrafts((prev) => ({ ...prev, [item.id]: String(item.quantity) }));
+                      }}
+                    >
                       <Iconify icon="solar:pen-bold-duotone" width={20} />
                     </IconButton>
-                    <IconButton size="small" color="error" onClick={() => setPendingDeleteId(item.id)}>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => setPendingDeleteId(item.id)}
+                    >
                       <Iconify icon="solar:trash-bin-trash-bold" width={20} />
                     </IconButton>
                   </Stack>
@@ -1103,7 +1298,9 @@ export function CommerceInventoryTable({
                 label="New Quantity"
                 type="number"
                 value={drafts[editItem.id] ?? ''}
-                onChange={(event) => setDrafts((prev) => ({ ...prev, [editItem.id]: event.target.value }))}
+                onChange={(event) =>
+                  setDrafts((prev) => ({ ...prev, [editItem.id]: event.target.value }))
+                }
                 autoFocus
               />
             </Stack>
@@ -1130,11 +1327,14 @@ export function CommerceInventoryTable({
         <DialogTitle>Delete inventory record?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            This will permanently delete quant record for {items.find(i => i.id === pendingDeleteId)?.productName || 'this item'}.
+            This will permanently delete quant record for{' '}
+            {items.find((i) => i.id === pendingDeleteId)?.productName || 'this item'}.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPendingDeleteId(null)} disabled={isDeleting}>Cancel</Button>
+          <Button onClick={() => setPendingDeleteId(null)} disabled={isDeleting}>
+            Cancel
+          </Button>
           <Button
             color="error"
             variant="contained"
@@ -1244,7 +1444,11 @@ export function CommerceProductFormCard({
       <Divider />
       <Form methods={productMethods} onSubmit={onSubmit}>
         <Stack spacing={3} sx={{ p: 3 }}>
-          <Tabs value={activeTab} onChange={(_event, value) => onTabChange(value)} variant="fullWidth">
+          <Tabs
+            value={activeTab}
+            onChange={(_event, value) => onTabChange(value)}
+            variant="fullWidth"
+          >
             <Tab value="general" label="General" />
             <Tab value="variants" label="Variants" />
             <Tab value="modifiers" label="Modifiers" />
@@ -1271,7 +1475,12 @@ export function CommerceProductFormCard({
               </Stack>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start">
                 <Box sx={{ flexGrow: 1 }}>
-                  <RHFTextField name="categoryId" label="Category" select helperText="Assign the product to an existing category.">
+                  <RHFTextField
+                    name="categoryId"
+                    label="Category"
+                    select
+                    helperText="Assign the product to an existing category."
+                  >
                     <MenuItem value="">Uncategorized</MenuItem>
                     {categories.map((category) => (
                       <MenuItem key={category.id} value={category.id}>
@@ -1280,7 +1489,12 @@ export function CommerceProductFormCard({
                     ))}
                   </RHFTextField>
                 </Box>
-                <Button variant="outlined" color="inherit" onClick={onCreateCategory} sx={{ mt: { sm: 0.5 } }}>
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  onClick={onCreateCategory}
+                  sx={{ mt: { sm: 0.5 } }}
+                >
                   New category
                 </Button>
               </Stack>
@@ -1394,7 +1608,12 @@ export function CommerceProductFormCard({
                             bgcolor: 'background.neutral',
                           }}
                         />
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 1 }}>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ p: 1 }}
+                        >
                           <Typography variant="caption" noWrap sx={{ maxWidth: 72 }}>
                             Image {index + 1}
                           </Typography>
@@ -1434,7 +1653,11 @@ export function CommerceProductFormCard({
                       <RHFTextField name={`variants.${index}.sku`} label="Variant SKU" />
                     </Stack>
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                      <RHFTextField name={`variants.${index}.priceCents`} label="Price (cents)" type="number" />
+                      <RHFTextField
+                        name={`variants.${index}.priceCents`}
+                        label="Price (cents)"
+                        type="number"
+                      />
                       <RHFTextField name={`variants.${index}.stock`} label="Stock" type="number" />
                     </Stack>
                     <Button color="error" onClick={() => removeVariant(index)}>
@@ -1444,7 +1667,9 @@ export function CommerceProductFormCard({
                 </Card>
               ))}
               {variantFields.length === 0 && (
-                <Alert severity="info">Add variants if the product has different sizes or options.</Alert>
+                <Alert severity="info">
+                  Add variants if the product has different sizes or options.
+                </Alert>
               )}
             </Stack>
           )}
@@ -1467,7 +1692,8 @@ export function CommerceProductFormCard({
               </Button>
 
               {modifierGroupFields.map((group, groupIndex) => {
-                const modifiers = productMethods.watch(`modifierGroups.${groupIndex}.modifiers`) || [];
+                const modifiers =
+                  productMethods.watch(`modifierGroups.${groupIndex}.modifiers`) || [];
 
                 return (
                   <Card key={group.id} variant="outlined" sx={{ p: 2 }}>
@@ -1506,7 +1732,9 @@ export function CommerceProductFormCard({
                         <Button
                           variant="outlined"
                           onClick={() => {
-                            const current = productMethods.getValues(`modifierGroups.${groupIndex}.modifiers`);
+                            const current = productMethods.getValues(
+                              `modifierGroups.${groupIndex}.modifiers`
+                            );
                             productMethods.setValue(`modifierGroups.${groupIndex}.modifiers`, [
                               ...(current || []),
                               { name: '', priceCents: 0 },
@@ -1533,8 +1761,20 @@ export function CommerceProductFormCard({
           )}
 
           <Stack direction="row" spacing={2}>
-            <Button type="submit" variant="contained" disabled={isPending} size="large" sx={{ flexGrow: 1 }}>
-              {isPending ? <CircularProgress size={20} color="inherit" /> : isEditing ? 'Update product' : 'Save product'}
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={isPending}
+              size="large"
+              sx={{ flexGrow: 1 }}
+            >
+              {isPending ? (
+                <CircularProgress size={20} color="inherit" />
+              ) : isEditing ? (
+                'Update product'
+              ) : (
+                'Save product'
+              )}
             </Button>
             {(isEditing || modal) && (
               <Button variant="outlined" color="inherit" size="large" onClick={onCancelEdit}>
@@ -1569,7 +1809,7 @@ export function CommerceOrdersTable({
   onStatusFilterChange,
   onView,
   onPay,
-  onReceipt,
+  onReceipt: _onReceipt,
   onMarkProcessing,
   onMarkCompleted,
 }: OrdersTableProps) {
@@ -1643,7 +1883,12 @@ export function CommerceOrdersTable({
                   </Stack>
                 </TableCell>
                 <TableCell>
-                  <Chip size="small" label={item.status} color={orderStatusColor(item.status)} variant="outlined" />
+                  <Chip
+                    size="small"
+                    label={item.status}
+                    color={orderStatusColor(item.status)}
+                    variant="outlined"
+                  />
                 </TableCell>
                 <TableCell>
                   <Chip
@@ -1660,15 +1905,30 @@ export function CommerceOrdersTable({
                       View
                     </Button>
                     {item.paymentStatus !== 'paid' ? (
-                      <Button size="small" variant="soft" color="primary" onClick={() => onPay(item.id)}>
+                      <Button
+                        size="small"
+                        variant="soft"
+                        color="primary"
+                        onClick={() => onPay(item.id)}
+                      >
                         Pay
                       </Button>
                     ) : item.status === 'processing' ? (
-                      <Button size="small" variant="soft" color="success" onClick={() => onMarkCompleted(item.id)}>
+                      <Button
+                        size="small"
+                        variant="soft"
+                        color="success"
+                        onClick={() => onMarkCompleted(item.id)}
+                      >
                         Complete
                       </Button>
                     ) : item.status !== 'completed' ? (
-                      <Button size="small" variant="soft" color="info" onClick={() => onMarkProcessing(item.id)}>
+                      <Button
+                        size="small"
+                        variant="soft"
+                        color="info"
+                        onClick={() => onMarkProcessing(item.id)}
+                      >
                         Process
                       </Button>
                     ) : null}
@@ -1769,7 +2029,8 @@ export function CommerceCategoriesTable({
                   <Stack spacing={0.5}>
                     <Typography variant="subtitle2">{category.name}</Typography>
                     <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      {category.activeProductCount || 0} active listing{category.activeProductCount === 1 ? '' : 's'}
+                      {category.activeProductCount || 0} active listing
+                      {category.activeProductCount === 1 ? '' : 's'}
                     </Typography>
                   </Stack>
                 </TableCell>
@@ -1885,9 +2146,17 @@ export function CommerceCouponsTable({
       >
         <Grid container spacing={2}>
           {[
-            { label: 'Visible coupons', value: coupons.length, helper: 'Coupons in the current search' },
+            {
+              label: 'Visible coupons',
+              value: coupons.length,
+              helper: 'Coupons in the current search',
+            },
             { label: 'Active offers', value: activeCoupons, helper: 'Coupons currently available' },
-            { label: 'Scheduled or expiring', value: scheduledCoupons, helper: 'Coupons with an expiry date' },
+            {
+              label: 'Scheduled or expiring',
+              value: scheduledCoupons,
+              helper: 'Coupons with an expiry date',
+            },
             { label: 'Usage capped', value: exhaustedCoupons, helper: 'Coupons at max usage' },
           ].map((item) => (
             <Grid key={item.label} item xs={12} sm={6} md={3}>
@@ -1934,7 +2203,9 @@ export function CommerceCouponsTable({
                   <Stack spacing={0.5}>
                     <Typography variant="body2">
                       Minimum order:{' '}
-                      <strong>{coupon.minOrderCents > 0 ? fCurrency(coupon.minOrderCents / 100) : 'None'}</strong>
+                      <strong>
+                        {coupon.minOrderCents > 0 ? fCurrency(coupon.minOrderCents / 100) : 'None'}
+                      </strong>
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                       {coupon.maxUsage ? `Max ${coupon.maxUsage} uses` : 'Unlimited uses'}
@@ -1950,7 +2221,9 @@ export function CommerceCouponsTable({
                   />
                 </TableCell>
                 <TableCell>
-                  {coupon.type === 'percent' ? `${coupon.value}%` : fCurrency((coupon.value || 0) / 100)}
+                  {coupon.type === 'percent'
+                    ? `${coupon.value}%`
+                    : fCurrency((coupon.value || 0) / 100)}
                 </TableCell>
                 <TableCell>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -2084,7 +2357,8 @@ export function CommerceSettingsPanel({
           <Box sx={{ p: 3 }}>
             <Typography variant="h6">Store settings</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Tax and payment configuration are managed by backend services and your current commerce integration.
+              Tax and payment configuration are managed by backend services and your current
+              commerce integration.
             </Typography>
           </Box>
           <Divider />
@@ -2121,7 +2395,11 @@ export function CommerceSettingsPanel({
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               Checkout route: <strong>{storefrontCheckoutHref}</strong>
             </Typography>
-            <Button component={Link} href={paths.public.onlineShop(resolvedShopKey, contactId)} variant="outlined">
+            <Button
+              component={Link}
+              href={paths.public.onlineShop(resolvedShopKey, contactId)}
+              variant="outlined"
+            >
               Open storefront preview
             </Button>
           </Stack>
@@ -2132,14 +2410,25 @@ export function CommerceSettingsPanel({
 }
 
 type TablesPanelProps = {
-  tables: Array<{ id: string; name: string; seats: number; status?: 'available' | 'occupied' | 'reserved' }>;
+  tables: Array<{
+    id: string;
+    name: string;
+    seats: number;
+    status?: 'available' | 'occupied' | 'reserved';
+  }>;
   onAdd: () => void;
   onUpdate: (id: string, changes: any) => void;
   onRemove: (id: string) => void;
   onOpenGuide: () => void;
 };
 
-export function CommerceTablesPanel({ tables, onAdd, onUpdate, onRemove, onOpenGuide }: TablesPanelProps) {
+export function CommerceTablesPanel({
+  tables,
+  onAdd,
+  onUpdate,
+  onRemove,
+  onOpenGuide,
+}: TablesPanelProps) {
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
@@ -2149,13 +2438,22 @@ export function CommerceTablesPanel({ tables, onAdd, onUpdate, onRemove, onOpenG
             Monitor and manage your restaurant floor plan in real-time.
           </Typography>
         </Box>
-      <Stack direction="row" spacing={1}>
-           <Button variant="outlined" color="inherit" startIcon={<Iconify icon="solar:settings-bold" />} onClick={onOpenGuide}>
-              Guide
-           </Button>
-           <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={onAdd}>
-              New Table
-           </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<Iconify icon="solar:settings-bold" />}
+            onClick={onOpenGuide}
+          >
+            Guide
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Iconify icon="mingcute:add-line" />}
+            onClick={onAdd}
+          >
+            New Table
+          </Button>
         </Stack>
       </Stack>
 
@@ -2164,34 +2462,48 @@ export function CommerceTablesPanel({ tables, onAdd, onUpdate, onRemove, onOpenG
           const tableStatus = tableItem.status || 'available';
           const isOccupied = tableStatus === 'occupied';
           const isReserved = tableStatus === 'reserved';
-          
+
           let statusColor: 'success' | 'error' | 'warning' | 'default' = 'success';
           if (isOccupied) statusColor = 'error';
           if (isReserved) statusColor = 'warning';
 
           return (
             <Grid item xs={12} sm={6} md={4} lg={3} key={tableItem.id}>
-              <Card 
-                sx={{ 
-                  p: 2.5, 
+              <Card
+                sx={{
+                  p: 2.5,
                   textAlign: 'center',
-                  border: (theme) => `2px solid ${isOccupied ? theme.palette.error.main : isReserved ? theme.palette.warning.main : 'transparent'}`,
-                  bgcolor: (theme) => isOccupied ? 'rgba(255, 72, 66, 0.04)' : isReserved ? 'rgba(255, 171, 0, 0.04)' : 'background.paper',
+                  border: (theme) =>
+                    `2px solid ${isOccupied ? theme.palette.error.main : isReserved ? theme.palette.warning.main : 'transparent'}`,
+                  bgcolor: (_theme) =>
+                    isOccupied
+                      ? 'rgba(255, 72, 66, 0.04)'
+                      : isReserved
+                        ? 'rgba(255, 171, 0, 0.04)'
+                        : 'background.paper',
                   transition: 'all 0.3s ease',
-                  '&:hover': { transform: 'translateY(-4px)', boxShadow: (theme) => theme.customShadows.z12 }
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: (theme) => theme.customShadows.z12,
+                  },
                 }}
               >
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                   <Chip 
-                     size="small" 
-                     label={tableStatus.toUpperCase()} 
-                     color={statusColor}
-                     variant="outlined"
-                     sx={{ fontWeight: 'bold', fontSize: 10 }}
-                   />
-                   <IconButton size="small" color="error" onClick={() => onRemove(tableItem.id)}>
-                      <Iconify icon="solar:trash-bin-trash-bold" width={16} />
-                   </IconButton>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  sx={{ mb: 2 }}
+                >
+                  <Chip
+                    size="small"
+                    label={tableStatus.toUpperCase()}
+                    color={statusColor}
+                    variant="outlined"
+                    sx={{ fontWeight: 'bold', fontSize: 10 }}
+                  />
+                  <IconButton size="small" color="error" onClick={() => onRemove(tableItem.id)}>
+                    <Iconify icon="solar:trash-bin-trash-bold" width={16} />
+                  </IconButton>
                 </Stack>
 
                 <Box
@@ -2199,7 +2511,11 @@ export function CommerceTablesPanel({ tables, onAdd, onUpdate, onRemove, onOpenG
                     width: 72,
                     height: 72,
                     borderRadius: '50%',
-                    bgcolor: isOccupied ? 'error.main' : isReserved ? 'warning.main' : 'success.main',
+                    bgcolor: isOccupied
+                      ? 'error.main'
+                      : isReserved
+                        ? 'warning.main'
+                        : 'success.main',
                     color: 'common.white',
                     display: 'flex',
                     alignItems: 'center',
@@ -2208,13 +2524,15 @@ export function CommerceTablesPanel({ tables, onAdd, onUpdate, onRemove, onOpenG
                     mb: 2,
                     fontSize: 24,
                     fontWeight: '800',
-                    boxShadow: (theme) => `0 8px 16px 0 ${theme.palette[statusColor].main}40`
+                    boxShadow: (theme) => `0 8px 16px 0 ${theme.palette[statusColor].main}40`,
                   }}
                 >
-                   {tableItem.name.replace(/\D/g, '') || tableItem.name[0]}
+                  {tableItem.name.replace(/\D/g, '') || tableItem.name[0]}
                 </Box>
 
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{tableItem.name}</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                  {tableItem.name}
+                </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
                   Capacity: {tableItem.seats} Seats
                 </Typography>
@@ -2222,38 +2540,59 @@ export function CommerceTablesPanel({ tables, onAdd, onUpdate, onRemove, onOpenG
                 <Divider sx={{ borderStyle: 'dashed', my: 2 }} />
 
                 <Stack direction="row" spacing={1}>
-                   <Button 
-                     fullWidth 
-                     size="small" 
-                     variant={isOccupied ? "outlined" : "soft"}
-                     color={isOccupied ? "inherit" : "primary"}
-                     onClick={() => onUpdate(tableItem.id, { status: isOccupied ? 'available' : 'occupied' })}
-                   >
-                      {isOccupied ? 'Clear' : 'Settle'}
-                   </Button>
-                   <Button 
-                     size="small" 
-                     variant="soft" 
-                     color="inherit"
-                     onClick={() => {
-                        const nextStatus = tableItem.status === 'reserved' ? 'available' : 'reserved';
-                        onUpdate(tableItem.id, { status: nextStatus });
-                     }}
-                   >
-                      <Iconify icon={isReserved ? "solar:calendar-cross-bold" : "solar:calendar-mark-bold"} width={18} />
-                   </Button>
+                  <Button
+                    fullWidth
+                    size="small"
+                    variant={isOccupied ? 'outlined' : 'soft'}
+                    color={isOccupied ? 'inherit' : 'primary'}
+                    onClick={() =>
+                      onUpdate(tableItem.id, { status: isOccupied ? 'available' : 'occupied' })
+                    }
+                  >
+                    {isOccupied ? 'Clear' : 'Settle'}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="soft"
+                    color="inherit"
+                    onClick={() => {
+                      const nextStatus = tableItem.status === 'reserved' ? 'available' : 'reserved';
+                      onUpdate(tableItem.id, { status: nextStatus });
+                    }}
+                  >
+                    <Iconify
+                      icon={isReserved ? 'solar:calendar-cross-bold' : 'solar:calendar-mark-bold'}
+                      width={18}
+                    />
+                  </Button>
                 </Stack>
               </Card>
             </Grid>
           );
         })}
-        
+
         {tables.length === 0 && (
           <Grid item xs={12}>
-            <Card sx={{ py: 10, textAlign: 'center', border: '2px dashed', borderColor: 'divider', bgcolor: 'transparent' }}>
-               <Iconify icon="solar:tuning-square-2-bold-duotone" width={64} sx={{ color: 'text.disabled', mb: 2 }} />
-               <Typography variant="h6" sx={{ color: 'text.secondary' }}>No tables configured</Typography>
-               <Button variant="contained" sx={{ mt: 2 }} onClick={onAdd}>Create First Table</Button>
+            <Card
+              sx={{
+                py: 10,
+                textAlign: 'center',
+                border: '2px dashed',
+                borderColor: 'divider',
+                bgcolor: 'transparent',
+              }}
+            >
+              <Iconify
+                icon="solar:tuning-square-2-bold-duotone"
+                width={64}
+                sx={{ color: 'text.disabled', mb: 2 }}
+              />
+              <Typography variant="h6" sx={{ color: 'text.secondary' }}>
+                No tables configured
+              </Typography>
+              <Button variant="contained" sx={{ mt: 2 }} onClick={onAdd}>
+                Create First Table
+              </Button>
             </Card>
           </Grid>
         )}
@@ -2328,15 +2667,25 @@ export function CommerceCartSummary({
                       </Typography>
                     )}
                   </Box>
-                  <Typography variant="subtitle2">{fCurrency((item.unitPriceCents * item.quantity) / 100)}</Typography>
+                  <Typography variant="subtitle2">
+                    {fCurrency((item.unitPriceCents * item.quantity) / 100)}
+                  </Typography>
                 </Stack>
 
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Button size="small" variant="outlined" onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
+                  >
                     -
                   </Button>
                   <Typography variant="body2">{item.quantity}</Typography>
-                  <Button size="small" variant="outlined" onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+                  >
                     +
                   </Button>
                   <Button size="small" color="error" onClick={() => onRemoveLine(item.id)}>
@@ -2394,7 +2743,13 @@ export function CommerceCartSummary({
           </Stack>
 
           {!isCheckoutMode && (
-            <Button component={Link} href={storefrontCheckoutHref} variant="contained" fullWidth disabled={checkoutDisabled}>
+            <Button
+              component={Link}
+              href={storefrontCheckoutHref}
+              variant="contained"
+              fullWidth
+              disabled={checkoutDisabled}
+            >
               {checkoutLabel || 'Checkout'}
             </Button>
           )}
@@ -2466,52 +2821,68 @@ export function CommerceStorefrontGrid({
               const hasTrackedInventory = Boolean(product.variants?.length);
 
               return (
-              <Grid item xs={12} sm={6} key={product.id}>
-                <Card sx={{ p: 2.5, height: '100%' }}>
-                  <Stack spacing={2} sx={{ height: '100%' }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
-                      <Box>
-                        <Typography variant="h6">{product.name}</Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          {product.description || 'Freshly added to the catalog.'}
+                <Grid item xs={12} sm={6} key={product.id}>
+                  <Card sx={{ p: 2.5, height: '100%' }}>
+                    <Stack spacing={2} sx={{ height: '100%' }}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="flex-start"
+                        spacing={2}
+                      >
+                        <Box>
+                          <Typography variant="h6">{product.name}</Typography>
+                          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                            {product.description || 'Freshly added to the catalog.'}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={
+                            !isPurchasable && product.status && product.status !== 'active'
+                              ? product.status.toUpperCase()
+                              : hasTrackedInventory
+                                ? `${inventoryStatus(getInventoryTotal(product)).label}${stockCount ? ` (${stockCount})` : ''}`
+                                : 'Available'
+                          }
+                          color={
+                            !isPurchasable && product.status && product.status !== 'active'
+                              ? 'default'
+                              : hasTrackedInventory
+                                ? inventoryStatus(getInventoryTotal(product)).color
+                                : 'success'
+                          }
+                          variant="outlined"
+                        />
+                      </Stack>
+
+                      <Box sx={{ flexGrow: 1 }} />
+
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="h6">
+                          {fCurrency(getBasePrice(product) / 100)}
                         </Typography>
-                      </Box>
-                      <Chip
-                        label={
-                          !isPurchasable && product.status && product.status !== 'active'
-                            ? product.status.toUpperCase()
-                            : hasTrackedInventory
-                              ? `${inventoryStatus(getInventoryTotal(product)).label}${stockCount ? ` (${stockCount})` : ''}`
-                              : 'Available'
-                        }
-                        color={
-                          !isPurchasable && product.status && product.status !== 'active'
-                            ? 'default'
-                            : hasTrackedInventory
-                              ? inventoryStatus(getInventoryTotal(product)).color
-                              : 'success'
-                        }
-                        variant="outlined"
-                      />
-                    </Stack>
-
-                    <Box sx={{ flexGrow: 1 }} />
-
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="h6">{fCurrency(getBasePrice(product) / 100)}</Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button color="inherit" component={Link} href={getProductHref(shopPath, resolvedShopKey, product.id)}>
-                          Details
-                        </Button>
-                        <Button variant="contained" onClick={() => onAddToCart(product)} disabled={!isPurchasable}>
-                          {isPurchasable ? 'Add' : 'Unavailable'}
-                        </Button>
+                        <Stack direction="row" spacing={1}>
+                          <Button
+                            color="inherit"
+                            component={Link}
+                            href={getProductHref(shopPath, resolvedShopKey, product.id)}
+                          >
+                            Details
+                          </Button>
+                          <Button
+                            variant="contained"
+                            onClick={() => onAddToCart(product)}
+                            disabled={!isPurchasable}
+                          >
+                            {isPurchasable ? 'Add' : 'Unavailable'}
+                          </Button>
+                        </Stack>
                       </Stack>
                     </Stack>
-                  </Stack>
-                </Card>
-              </Grid>
-            )})}
+                  </Card>
+                </Grid>
+              );
+            })}
             {products.length === 0 && (
               <Grid item xs={12}>
                 <Alert severity="info">No products matched the current search.</Alert>
@@ -2622,7 +2993,9 @@ export function CommerceProductDetail({
                   label="Quantity"
                   type="number"
                   value={detailQuantity}
-                  onChange={(event) => onQuantityChange(Math.max(1, Number(event.target.value) || 1))}
+                  onChange={(event) =>
+                    onQuantityChange(Math.max(1, Number(event.target.value) || 1))
+                  }
                   sx={{ width: 120 }}
                   inputProps={{ min: 1, max: Math.max(1, availableStock) }}
                 />
@@ -2642,7 +3015,10 @@ export function CommerceProductDetail({
                 <Button variant="contained" onClick={onAddToCart} disabled={availableStock <= 0}>
                   Add to cart
                 </Button>
-                <Button component={Link} href={getStorefrontHomeHref(shopPath, resolvedShopKey, contactId)}>
+                <Button
+                  component={Link}
+                  href={getStorefrontHomeHref(shopPath, resolvedShopKey, contactId)}
+                >
                   Back to shop
                 </Button>
               </Stack>
@@ -2701,7 +3077,11 @@ export function CommerceCheckoutPanel({
               </Stack>
               <RHFTextField name="postalCode" label="Postal code" />
 
-              <Button type="submit" variant="contained" disabled={isPending || cartItemsLength === 0}>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={isPending || cartItemsLength === 0}
+              >
                 {isPending ? <CircularProgress size={20} color="inherit" /> : 'Create order'}
               </Button>
             </Stack>
@@ -2765,7 +3145,9 @@ export function CommerceOrderCard({
                 <Typography variant="body2">
                   {item.productName} x {item.quantity}
                 </Typography>
-                <Typography variant="body2">{fCurrency((item.unitPriceCents * item.quantity) / 100)}</Typography>
+                <Typography variant="body2">
+                  {fCurrency((item.unitPriceCents * item.quantity) / 100)}
+                </Typography>
               </Stack>
             ))}
           </Stack>
@@ -2785,14 +3167,21 @@ export function CommerceOrderCard({
               </Stack>
               <Stack direction="row" justifyContent="space-between">
                 <Typography variant="subtitle1">Order status</Typography>
-                <Chip size="small" label={selectedOrder.status} color={orderStatusColor(selectedOrder.status)} variant="outlined" />
+                <Chip
+                  size="small"
+                  label={selectedOrder.status}
+                  color={orderStatusColor(selectedOrder.status)}
+                  variant="outlined"
+                />
               </Stack>
             </>
           )}
 
           <Stack direction="row" justifyContent="space-between">
             <Typography variant={isReceipt ? 'h6' : 'subtitle1'}>Total</Typography>
-            <Typography variant={isReceipt ? 'h6' : 'subtitle1'}>{fCurrency(selectedOrder.totalAmountCents / 100)}</Typography>
+            <Typography variant={isReceipt ? 'h6' : 'subtitle1'}>
+              {fCurrency(selectedOrder.totalAmountCents / 100)}
+            </Typography>
           </Stack>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -2812,7 +3201,10 @@ export function CommerceOrderCard({
               </Button>
             )}
             {isReceipt && (
-              <Button component={Link} href={getStorefrontHomeHref(shopPath, resolvedShopKey, contactId)}>
+              <Button
+                component={Link}
+                href={getStorefrontHomeHref(shopPath, resolvedShopKey, contactId)}
+              >
                 Continue shopping
               </Button>
             )}
@@ -2851,7 +3243,7 @@ export function CommerceDashboardModules({
   onModuleChange,
   summaryCards,
   productsTable,
-  productForm,
+  productForm: _productForm,
   categoriesTable,
   couponsTable,
   ordersTable,
@@ -2868,7 +3260,12 @@ export function CommerceDashboardModules({
 }: DashboardModulesProps) {
   return (
     <Stack spacing={4}>
-      <Tabs value={currentModule} onChange={(_event, value) => onModuleChange(value)} variant="scrollable" scrollButtons="auto">
+      <Tabs
+        value={currentModule}
+        onChange={(_event, value) => onModuleChange(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+      >
         {modules.map((moduleItem) => (
           <Tab key={moduleItem.value} value={moduleItem.value} label={moduleItem.label} />
         ))}
@@ -2933,7 +3330,13 @@ export function CommerceCategoryDialog({
             Cancel
           </Button>
           <Button type="submit" variant="contained" disabled={isPending}>
-            {isPending ? <CircularProgress size={20} color="inherit" /> : isEditing ? 'Save changes' : 'Create'}
+            {isPending ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : isEditing ? (
+              'Save changes'
+            ) : (
+              'Create'
+            )}
           </Button>
         </DialogActions>
       </Form>
@@ -3018,7 +3421,13 @@ export function CommerceCouponDialog({
             Cancel
           </Button>
           <Button type="submit" variant="contained" disabled={isPending}>
-            {isPending ? <CircularProgress size={20} color="inherit" /> : isEditing ? 'Save changes' : 'Create'}
+            {isPending ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : isEditing ? (
+              'Save changes'
+            ) : (
+              'Create'
+            )}
           </Button>
         </DialogActions>
       </Form>
@@ -3031,7 +3440,7 @@ export function CommerceOrderDetailDialog({
   onClose,
   order,
   onStatusUpdate,
-  onReceipt,
+  onReceipt: _onReceipt,
 }: {
   open: boolean;
   onClose: () => void;
@@ -3044,48 +3453,108 @@ export function CommerceOrderDetailDialog({
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-         Order Detail #{order.id.slice(0, 8)}
-         <Chip label={order.status.toUpperCase()} color={orderStatusColor(order.status)} size="small" />
+        Order Detail #{order.id.slice(0, 8)}
+        <Chip
+          label={order.status.toUpperCase()}
+          color={orderStatusColor(order.status)}
+          size="small"
+        />
       </DialogTitle>
       <DialogContent dividers>
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
-            <Typography variant="h6" sx={{ mb: 1.5 }}>Customer Information</Typography>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>
+              Customer Information
+            </Typography>
             <Stack spacing={1}>
-              <Typography variant="subtitle2">Name: <Box component="span" sx={{ fontWeight: 'normal' }}>{(order.shippingAddress as any)?.customerName}</Box></Typography>
-              <Typography variant="subtitle2">Email: <Box component="span" sx={{ fontWeight: 'normal' }}>{(order.shippingAddress as any)?.email}</Box></Typography>
-              <Typography variant="subtitle2">Phone: <Box component="span" sx={{ fontWeight: 'normal' }}>{(order.shippingAddress as any)?.phone || 'N/A'}</Box></Typography>
-              <Typography variant="subtitle2">Address: <Box component="span" sx={{ fontWeight: 'normal' }}>{`${(order.shippingAddress as any)?.line1}, ${(order.shippingAddress as any)?.city}, ${(order.shippingAddress as any)?.postalCode}`}</Box></Typography>
+              <Typography variant="subtitle2">
+                Name:{' '}
+                <Box component="span" sx={{ fontWeight: 'normal' }}>
+                  {(order.shippingAddress as any)?.customerName}
+                </Box>
+              </Typography>
+              <Typography variant="subtitle2">
+                Email:{' '}
+                <Box component="span" sx={{ fontWeight: 'normal' }}>
+                  {(order.shippingAddress as any)?.email}
+                </Box>
+              </Typography>
+              <Typography variant="subtitle2">
+                Phone:{' '}
+                <Box component="span" sx={{ fontWeight: 'normal' }}>
+                  {(order.shippingAddress as any)?.phone || 'N/A'}
+                </Box>
+              </Typography>
+              <Typography variant="subtitle2">
+                Address:{' '}
+                <Box
+                  component="span"
+                  sx={{ fontWeight: 'normal' }}
+                >{`${(order.shippingAddress as any)?.line1}, ${(order.shippingAddress as any)?.city}, ${(order.shippingAddress as any)?.postalCode}`}</Box>
+              </Typography>
             </Stack>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Typography variant="h6" sx={{ mb: 1.5 }}>Order Summary</Typography>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>
+              Order Summary
+            </Typography>
             <Stack spacing={1.5}>
               {order.items.map((item: any) => (
                 <Stack key={item.id} direction="row" justifyContent="space-between">
-                  <Typography variant="body2">{item.productName} x {item.quantity}</Typography>
-                  <Typography variant="subtitle2">{fCurrency((item.unitPriceCents * item.quantity) / 100)}</Typography>
+                  <Typography variant="body2">
+                    {item.productName} x {item.quantity}
+                  </Typography>
+                  <Typography variant="subtitle2">
+                    {fCurrency((item.unitPriceCents * item.quantity) / 100)}
+                  </Typography>
                 </Stack>
               ))}
               <Divider />
               <Stack direction="row" justifyContent="space-between">
                 <Typography variant="subtitle1">Total</Typography>
-                <Typography variant="h6" color="primary">{fCurrency(order.totalAmountCents / 100)}</Typography>
+                <Typography variant="h6" color="primary">
+                  {fCurrency(order.totalAmountCents / 100)}
+                </Typography>
               </Stack>
             </Stack>
           </Grid>
         </Grid>
       </DialogContent>
       <DialogActions sx={{ p: 2.5 }}>
-        <Button onClick={onClose} color="inherit">Close</Button>
-        <Button onClick={() => onReceipt(order.id)} startIcon={<Iconify icon="solar:printer-bold" />}>Print Receipt</Button>
+        <Button onClick={onClose} color="inherit">
+          Close
+        </Button>
+        <Button
+          onClick={() => onReceipt(order.id)}
+          startIcon={<Iconify icon="solar:printer-bold" />}
+        >
+          Print Receipt
+        </Button>
         <Box sx={{ flexGrow: 1 }} />
         {order.paymentStatus !== 'paid' ? (
-          <Button variant="contained" color="success" onClick={() => onStatusUpdate(order.id, 'processing', 'paid')}>Mark Paid & Process</Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={() => onStatusUpdate(order.id, 'processing', 'paid')}
+          >
+            Mark Paid & Process
+          </Button>
         ) : order.status === 'processing' ? (
-          <Button variant="contained" color="success" onClick={() => onStatusUpdate(order.id, 'completed')}>Mark Completed</Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={() => onStatusUpdate(order.id, 'completed')}
+          >
+            Mark Completed
+          </Button>
         ) : order.status !== 'completed' ? (
-          <Button variant="contained" color="info" onClick={() => onStatusUpdate(order.id, 'processing')}>Start Processing</Button>
+          <Button
+            variant="contained"
+            color="info"
+            onClick={() => onStatusUpdate(order.id, 'processing')}
+          >
+            Start Processing
+          </Button>
         ) : null}
       </DialogActions>
     </Dialog>
@@ -3104,7 +3573,8 @@ export function CommerceTableGuideDialog({
       <DialogTitle>Table workflow</DialogTitle>
       <DialogContent>
         <Alert severity="info" sx={{ mt: 1 }}>
-          The table list is now editable and stored per shop. A visual floor-plan editor can be added later without changing the stored table records.
+          The table list is now editable and stored per shop. A visual floor-plan editor can be
+          added later without changing the stored table records.
         </Alert>
       </DialogContent>
       <DialogActions>
@@ -3139,14 +3609,21 @@ export function CommerceMembershipsTable() {
           </TableHead>
           <TableBody>
             {[
-              { name: 'Elite Performance (Annual)', status: 'active', price: '$1,200', members: 42 },
+              {
+                name: 'Elite Performance (Annual)',
+                status: 'active',
+                price: '$1,200',
+                members: 42,
+              },
               { name: 'Standard Monthly', status: 'active', price: '$99', members: 128 },
               { name: 'Trial Pass (14 Days)', status: 'draft', price: '$0', members: 0 },
             ].map((membership) => (
               <TableRow key={membership.name} hover>
                 <TableCell>
-                   <Typography variant="subtitle2">{membership.name}</Typography>
-                   <Typography variant="caption" color="text.secondary">Digital Contract ID: MC-8201</Typography>
+                  <Typography variant="subtitle2">{membership.name}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Digital Contract ID: MC-8201
+                  </Typography>
                 </TableCell>
                 <TableCell>
                   <Chip
@@ -3157,15 +3634,21 @@ export function CommerceMembershipsTable() {
                   />
                 </TableCell>
                 <TableCell>
-                   <Typography variant="subtitle2">{membership.price}</Typography>
-                   <Typography variant="caption" color="text.secondary">Per cycle</Typography>
+                  <Typography variant="subtitle2">{membership.price}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Per cycle
+                  </Typography>
                 </TableCell>
                 <TableCell>
-                   <Typography variant="h6">{membership.members}</Typography>
+                  <Typography variant="h6">{membership.members}</Typography>
                 </TableCell>
                 <TableCell align="right">
-                  <Button size="small" color="inherit">Manage Tiers</Button>
-                  <Button size="small" color="inherit">Edit Contract</Button>
+                  <Button size="small" color="inherit">
+                    Manage Tiers
+                  </Button>
+                  <Button size="small" color="inherit">
+                    Edit Contract
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

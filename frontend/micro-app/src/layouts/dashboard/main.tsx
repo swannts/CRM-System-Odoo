@@ -53,6 +53,7 @@ export function DashboardContent({ sx, children, disablePadding, maxWidth = 'lg'
   return (
     <Container
       className={layoutClasses.content}
+      data-cy="dashboard-content"
       maxWidth={settings.compactLayout ? maxWidth : false}
       sx={{
         display: 'flex',

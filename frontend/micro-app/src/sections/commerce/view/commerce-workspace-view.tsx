@@ -1,24 +1,13 @@
 'use client';
 
-import Link from 'next/link';
+import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, useEffect, useCallback } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, useFieldArray } from 'react-hook-form';
-import { useAppDispatch, useAppSelector } from 'src/store/hooks';
-import {
-  fetchCommerceProducts,
-  fetchCommerceCategories,
-  fetchCommerceInventory,
-  fetchCommerceOrders,
-  fetchInventoryLocations,
-  fetchCommerceCouponsThunk,
-  selectCommerce,
-} from 'src/store/slices/commerce-slice';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-import Alert from '@mui/material/Alert';
+import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -33,14 +22,22 @@ import { paths } from 'src/routes/paths';
 import { useBoolean } from 'src/hooks/use-boolean';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { publicCommerceService } from 'src/services/public-commerce-service';
+import { useAppDispatch, useAppSelector } from 'src/store/hooks';
 import {
   commerceService,
   type ICommerceCoupon,
   type ICommerceProduct,
   type ICommerceCategory,
-  type ICommerceImageAsset,
 } from 'src/services/commerce-service';
+import {
+  selectCommerce,
+  fetchCommerceOrders,
+  fetchCommerceProducts,
+  fetchCommerceInventory,
+  fetchCommerceCategories,
+  fetchInventoryLocations,
+  fetchCommerceCouponsThunk,
+} from 'src/store/slices/commerce-slice';
 
 import { toast } from 'src/components/snackbar';
 
@@ -49,15 +46,20 @@ import { useAuthContext } from 'src/auth/hooks';
 import {
   readStorage,
   getBasePrice,
-  writeStorage,
-  buildCartLine,
   cartStorageKey,
   normalizeOrder,
-  tableStorageKey,
-  getAvailableStock,
   settingsStorageKey,
-  isProductPurchasable,
 } from './commerce-workspace.utils';
+import {
+  CommerceOrdersTable,
+  CommerceSummaryCards,
+  CommerceProductsTable,
+  CommerceInventoryTable,
+  CommerceCategoryDialog,
+  CommerceCategoriesTable,
+  CommerceProductFormCard,
+  CommerceDashboardModules,
+} from './commerce-workspace-sections';
 import {
   type CartLine,
   type LocalOrder,
@@ -78,41 +80,18 @@ import {
   type CommerceWorkspaceProps,
   type CommerceDashboardModule,
 } from './commerce-workspace.types';
-import {
-  CommerceOrderCard,
-  CommerceCartSummary,
-  CommerceInventoryTable,
-  CommerceOrdersTable,
-  CommerceTablesPanel,
-  CommerceCouponDialog,
-  CommerceCouponsTable,
-  CommerceSummaryCards,
-  CommerceCheckoutPanel,
-  CommerceProductDetail,
-  CommerceProductsTable,
-  CommerceSettingsPanel,
-  CommerceCategoryDialog,
-  CommerceCustomersTable,
-  CommerceStorefrontGrid,
-  CommerceCategoriesTable,
-  CommerceProductFormCard,
-  CommerceDashboardModules,
-  CommerceTableGuideDialog,
-  CommerceOrderDetailDialog,
-  CommerceProductDetailDialog,
-} from './commerce-workspace-sections';
 
 export function CommerceWorkspaceView({
   mode = 'dashboard-shop',
   shopPath,
   shopId,
-  contactId,
+  contactId: _contactId,
   productId,
-  cartId,
-  orderId,
-  receiptId,
+  cartId: _cartId,
+  orderId: _orderId,
+  receiptId: _receiptId,
   section,
-  type,
+  type: _type,
 }: CommerceWorkspaceProps) {
   const capabilities = {
     bulkProductStatusUpdate: false,
@@ -148,6 +127,12 @@ export function CommerceWorkspaceView({
     isKnownSection
       ? (section as CommerceDashboardModule)
       : resolveInitialModule(mode);
+  const handleModuleChange = useCallback(
+    (nextModule: CommerceDashboardModule) => {
+      router.push(paths.dashboard.shopSection(nextModule));
+    },
+    [router]
+  );
   const enabledDashboardModules = useMemo(
     () =>
       COMMERCE_DASHBOARD_MODULES.filter((moduleItem) => {
@@ -159,31 +144,27 @@ export function CommerceWorkspaceView({
     [capabilities.coupons, capabilities.designer, capabilities.memberships]
   );
 
-  const [search, setSearch] = useState('');
+  const [search, _setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [productCategoryFilter, setProductCategoryFilter] = useState('all');
-  const [productStatusFilter, setProductStatusFilter] = useState('all');
-  const [productPage, setProductPage] = useState(0);
-  const [productRowsPerPage, setProductRowsPerPage] = useState(20);
-  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
-  const [categorySearch, setCategorySearch] = useState('');
-  const [couponSearch, setCouponSearch] = useState('');
+  const [productCategoryFilter, _setProductCategoryFilter] = useState('all');
+  const [productStatusFilter, _setProductStatusFilter] = useState('all');
+  const [productPage, _setProductPage] = useState(0);
+  const [productRowsPerPage, _setProductRowsPerPage] = useState(20);
+  const [_selectedProductIds, _setSelectedProductIds] = useState<string[]>([]);
+  const [_deleteTargetIds, _setDeleteTargetIds] = useState<string[]>([]);
+  const [categorySearch, _setCategorySearch] = useState('');
+  const [couponSearch, _setCouponSearch] = useState('');
   const [orderSearch, setOrderSearch] = useState('');
-  const [inventorySearch, setInventorySearch] = useState('');
+  const [inventorySearch, _setInventorySearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('all');
-  const [selectedVariantId, setSelectedVariantId] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
-  const [detailQuantity, setDetailQuantity] = useState(1);
-  const [appliedCouponCode, setAppliedCouponCode] = useState('');
+  const [_editingCouponId, _setEditingCouponId] = useState<string | null>(null);
+  const [appliedCouponCode, _setAppliedCouponCode] = useState('');
   const [cartItems, setCartItems] = useState<CartLine[]>([]);
-  const [tableLayouts, setTableLayouts] = useState<Array<{ id: string; name: string; seats: number; status: 'available' | 'occupied' | 'reserved' }>>([]);
 
   const categoryDialog = useBoolean();
-  const couponDialog = useBoolean();
-  const orderDialog = useBoolean();
+  const _couponDialog = useBoolean();
   const productDialog = useBoolean();
 
   const productMethods = useForm<ProductFormValues>({
@@ -196,7 +177,7 @@ export function CommerceWorkspaceView({
     defaultValues: { name: '', description: '', isActive: true },
   });
 
-  const couponMethods = useForm<CouponFormValues>({
+  const _couponMethods = useForm<CouponFormValues>({
     resolver: zodResolver(COUPON_FORM_SCHEMA),
     defaultValues: { code: '', type: 'percent', value: 0, minOrderCents: 0, maxUsage: '', expiresAt: '', isActive: true },
   });
@@ -206,7 +187,7 @@ export function CommerceWorkspaceView({
     defaultValues: DEFAULT_SETTINGS,
   });
 
-  const checkoutMethods = useForm<CheckoutFormValues>({
+  const _checkoutMethods = useForm<CheckoutFormValues>({
     resolver: zodResolver(CHECKOUT_FORM_SCHEMA),
     defaultValues: {
       customerName: '',
@@ -220,20 +201,11 @@ export function CommerceWorkspaceView({
     },
   });
 
-  const { control } = productMethods;
+  const _control = productMethods.control;
 
   useEffect(() => {
     setCartItems(readStorage<CartLine[]>(cartStorageKey(resolvedShopKey), []));
     settingsMethods.reset(readStorage<SettingsFormValues>(settingsStorageKey(resolvedShopKey), DEFAULT_SETTINGS));
-    setTableLayouts(
-      readStorage<Array<{ id: string; name: string; seats: number; status?: 'available' | 'occupied' | 'reserved' }>>(
-        tableStorageKey(resolvedShopKey),
-        []
-      ).map((tableItem) => ({
-        ...tableItem,
-        status: tableItem.status || 'available',
-      }))
-    );
   }, [resolvedShopKey, settingsMethods]);
 
   useEffect(() => {
@@ -319,6 +291,10 @@ export function CommerceWorkspaceView({
     refetch: () => dispatch(fetchCommerceCouponsThunk(resolvedShopKey))
   };
 
+  const refreshOrders = useCallback(() => {
+    dispatch(fetchCommerceOrders(resolvedOrgId));
+  }, [dispatch, resolvedOrgId]);
+
   // Mutations refactored to async/await with Redux refresh
   const handleCreateProduct = async (values: ProductFormValues) => {
     try {
@@ -353,18 +329,6 @@ export function CommerceWorkspaceView({
       toast.success('Product deleted');
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete product');
-    }
-  };
-
-  const handleBulkDelete = async (ids: string[]) => {
-    try {
-      await Promise.all(ids.map((id) => commerceService.deleteProduct(resolvedShopKey, id)));
-      setSelectedProductIds([]);
-      setDeleteTargetIds([]);
-      loadProducts();
-      toast.success('Selected products deleted');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete products');
     }
   };
 
@@ -403,6 +367,39 @@ export function CommerceWorkspaceView({
       toast.error(err.message || 'Failed to remove category');
     }
   };
+
+  const handleViewOrder = useCallback(
+    (id: string) => {
+      router.push(paths.public.orderPayment(id));
+    },
+    [router]
+  );
+
+  const handleMarkOrderProcessing = useCallback(
+    async (id: string) => {
+      try {
+        await commerceService.updateOrder(resolvedOrgId, id, { status: 'processing' });
+        refreshOrders();
+        toast.success('Order marked as processing');
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to update order');
+      }
+    },
+    [refreshOrders, resolvedOrgId]
+  );
+
+  const handleMarkOrderCompleted = useCallback(
+    async (id: string) => {
+      try {
+        await commerceService.updateOrder(resolvedOrgId, id, { status: 'completed', paymentStatus: 'paid' });
+        refreshOrders();
+        toast.success('Order marked as completed');
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to update order');
+      }
+    },
+    [refreshOrders, resolvedOrgId]
+  );
 
   const products = useMemo<ICommerceProduct[]>(
     () => {
@@ -483,7 +480,7 @@ export function CommerceWorkspaceView({
     });
   }, [catalogCategories, categorySearch]);
 
-  const filteredCoupons = useMemo(() => {
+  const _filteredCoupons = useMemo(() => {
     const coupons = Array.isArray(couponsQuery.data) ? (couponsQuery.data as ICommerceCoupon[]) : [];
     const query = couponSearch.trim().toLowerCase();
     if (!query) return coupons;
@@ -498,7 +495,7 @@ export function CommerceWorkspaceView({
     });
   }, [couponSearch, couponsQuery.data]);
 
-  const selectedProduct = useMemo(
+  const _selectedProduct = useMemo(
     () =>
       filteredProducts.find((product) => product.id === productId) ||
       products.find((product) => product.id === productId),
@@ -530,25 +527,27 @@ export function CommerceWorkspaceView({
     return Math.min(cartSubtotalCents, activeCoupon.value || 0);
   }, [activeCoupon, cartSubtotalCents]);
 
-  const cartTotalCents = Math.max(0, cartSubtotalCents - discountCents);
+  const _cartTotalCents = Math.max(0, cartSubtotalCents - discountCents);
 
+  const normalizedOrderSearch = orderSearch.trim().toLowerCase();
   const filteredOrders = useMemo(
     () =>
       mergedOrders.filter((item) => {
-      const matchesSearch =
-        !orderSearch.trim() ||
-        item.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
-        item.items.some((line) => line.productName.toLowerCase().includes(orderSearch.toLowerCase())) ||
-        (item.shippingAddress as any)?.customerName?.toLowerCase().includes(orderSearch.toLowerCase());
+        const customerName = String((item.shippingAddress as any)?.customerName || '').toLowerCase();
+        const matchesSearch =
+          !normalizedOrderSearch ||
+          item.id.toLowerCase().includes(normalizedOrderSearch) ||
+          item.items.some((line) => String(line.productName || '').toLowerCase().includes(normalizedOrderSearch)) ||
+          customerName.includes(normalizedOrderSearch);
 
-      const matchesStatus =
-        orderStatusFilter === 'all' ||
-        item.status === orderStatusFilter ||
-        item.paymentStatus === orderStatusFilter;
+        const matchesStatus =
+          orderStatusFilter === 'all' ||
+          item.status === orderStatusFilter ||
+          item.paymentStatus === orderStatusFilter;
 
-      return matchesSearch && matchesStatus;
+        return matchesSearch && matchesStatus;
       }),
-    [mergedOrders, orderSearch, orderStatusFilter]
+    [mergedOrders, normalizedOrderSearch, orderStatusFilter]
   );
 
   const isLoading = commerceState.products.loading || commerceState.categories.loading || commerceState.orders.loading;
@@ -574,21 +573,28 @@ export function CommerceWorkspaceView({
 
       <CommerceDashboardModules
         currentModule={currentModule}
-        onChange={handleModuleChange}
+        onModuleChange={handleModuleChange}
         modules={enabledDashboardModules}
       />
 
       {currentModule === 'dashboard' && (
         <Stack spacing={4}>
-           <CommerceSummaryCards orders={mergedOrders} products={products} />
-           
+           <CommerceSummaryCards orders={mergedOrders} products={products} cartItems={cartItems} />
+
            <Grid container spacing={3}>
               <Grid item xs={12} md={8}>
                  <Card sx={{ p: 3 }}>
                     <Typography variant="h6" sx={{ mb: 3 }}>Recent Orders</Typography>
-                    <CommerceOrdersTable 
-                      orders={mergedOrders.slice(0, 5)} 
-                      onSelect={(id) => router.push(paths.dashboard.shopSection('orders', id))}
+                    <CommerceOrdersTable
+                      orders={filteredOrders.slice(0, 5)}
+                      search={orderSearch}
+                      statusFilter={orderStatusFilter}
+                      onSearchChange={setOrderSearch}
+                      onStatusFilterChange={setOrderStatusFilter}
+                      onView={handleViewOrder}
+                      onPay={handleViewOrder}
+                      onMarkProcessing={handleMarkOrderProcessing}
+                      onMarkCompleted={handleMarkOrderCompleted}
                     />
                  </Card>
               </Grid>
@@ -598,10 +604,10 @@ export function CommerceWorkspaceView({
                     <Stack spacing={2}>
                        {filteredProducts.slice(0, 5).map((product) => (
                          <Box key={product.id} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Box 
-                              component="img" 
-                              src={product.photos?.[0] || '/assets/placeholder.png'} 
-                              sx={{ width: 48, height: 48, borderRadius: 1, objectFit: 'cover' }} 
+                            <Box
+                              component="img"
+                              src={product.photos?.[0] || '/assets/placeholder.png'}
+                              sx={{ width: 48, height: 48, borderRadius: 1, objectFit: 'cover' }}
                             />
                             <Box sx={{ flexGrow: 1 }}>
                                <Typography variant="subtitle2">{product.name}</Typography>
@@ -620,8 +626,8 @@ export function CommerceWorkspaceView({
       {currentModule === 'products' && (
         <Stack spacing={3}>
            <Stack direction="row" spacing={2} justifyContent="flex-end">
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 startIcon={<Iconify icon="mingcute:add-line" />}
                 onClick={() => {
                   setEditingId(null);
@@ -632,7 +638,7 @@ export function CommerceWorkspaceView({
                 New Product
               </Button>
            </Stack>
-           <CommerceProductsTable 
+           <CommerceProductsTable
              products={filteredProducts}
              onEdit={(id) => {
                setEditingId(id);
@@ -648,8 +654,8 @@ export function CommerceWorkspaceView({
       {currentModule === 'categories' && (
         <Stack spacing={3}>
            <Stack direction="row" spacing={2} justifyContent="flex-end">
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 startIcon={<Iconify icon="mingcute:add-line" />}
                 onClick={() => {
                   setEditingCategoryId(null);
@@ -660,7 +666,7 @@ export function CommerceWorkspaceView({
                 New Category
               </Button>
            </Stack>
-           <CommerceCategoriesTable 
+           <CommerceCategoriesTable
              categories={filteredCategories}
              onEdit={(id) => {
                setEditingCategoryId(id);
@@ -674,33 +680,40 @@ export function CommerceWorkspaceView({
       )}
 
       {currentModule === 'orders' && (
-        <CommerceOrdersTable 
+        <CommerceOrdersTable
           orders={filteredOrders}
-          onSelect={(id) => router.push(paths.dashboard.shopSection('orders', id))}
+          search={orderSearch}
+          statusFilter={orderStatusFilter}
+          onSearchChange={setOrderSearch}
+          onStatusFilterChange={setOrderStatusFilter}
+          onView={handleViewOrder}
+          onPay={handleViewOrder}
+          onMarkProcessing={handleMarkOrderProcessing}
+          onMarkCompleted={handleMarkOrderCompleted}
         />
       )}
 
       {currentModule === 'inventory' && (
-        <CommerceInventoryTable 
+        <CommerceInventoryTable
           inventory={inventoryQuery.data?.items || []}
         />
       )}
 
-      <CommerceCategoryDialog 
-        open={categoryDialog.value} 
-        onClose={categoryDialog.onFalse()}
+      <CommerceCategoryDialog
+        open={categoryDialog.value}
+        onClose={categoryDialog.onFalse}
         methods={categoryMethods}
         isEdit={!!editingCategoryId}
         onSubmit={editingCategoryId ? handleUpdateCategory : handleCreateCategory}
       />
 
-      <Dialog open={productDialog.value} onClose={productDialog.onFalse()} fullWidth maxWidth="md">
+      <Dialog open={productDialog.value} onClose={productDialog.onFalse} fullWidth maxWidth="md">
          <DialogTitle>{editingId ? 'Edit Product' : 'New Product'}</DialogTitle>
          <DialogContent>
             <CommerceProductFormCard methods={productMethods} />
          </DialogContent>
          <DialogActions>
-            <Button onClick={productDialog.onFalse()}>Cancel</Button>
+            <Button onClick={productDialog.onFalse}>Cancel</Button>
             <Button variant="contained" onClick={productMethods.handleSubmit(editingId ? handleUpdateProduct : handleCreateProduct)}>
                {editingId ? 'Update' : 'Create'}
             </Button>

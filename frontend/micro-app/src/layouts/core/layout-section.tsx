@@ -48,7 +48,7 @@ export function LayoutSection({
     <>
       {inputGlobalStyles}
 
-      <Box id="root__layout" className={layoutClasses.root} sx={sx}>
+      <Box id="root__layout" data-cy="app-shell" className={layoutClasses.root} sx={sx}>
         {sidebarSection ? (
           <>
             {sidebarSection}
