@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "prisma generate && tsx watch src/server.ts",
     "build": "prisma generate && tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "node --import tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
     "@mymanager/node-service-kit": "file:../../common/node-service-kit",

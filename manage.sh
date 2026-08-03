@@ -32,6 +32,7 @@ usage() {
     echo "  logs      Follow logs"
     echo "  ps        List containers"
     echo "  seed      Generate dummy data & test users"
+    echo "  reseed    Clean, start, and seed the environment"
     echo "  clean     Remove all volumes & clean install"
     echo "Example:"
     echo "  $0 dev up"
@@ -141,6 +142,25 @@ wait_for_services_ready() {
     done
 }
 
+wait_for_http_ready() {
+    local network="$1"
+    local url="$2"
+    local timeout_seconds="$3"
+    local deadline=$((SECONDS + timeout_seconds))
+
+    while :; do
+        if docker run --rm --network "$network" curlimages/curl:8.10.1 -fsS -o /dev/null "$url" >/dev/null 2>&1; then
+            return 0
+        fi
+
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            error "Timed out waiting for $url"
+        fi
+
+        sleep 2
+    done
+}
+
 # Map commands to docker compose actions
 case $CMD in
     up)
@@ -194,6 +214,8 @@ case $CMD in
         fi
 
         info "Detected network: $NETWORK"
+        info "Waiting for Keycloak to become ready..."
+        wait_for_http_ready "$NETWORK" "http://keycloak:8080/realms/master/.well-known/openid-configuration" 180
 
         docker run --rm \
             --network "$NETWORK" \
@@ -203,6 +225,7 @@ case $CMD in
             -e SEED_PROJECTS_HOST=api-router-service \
             -e SEED_DEAL_HOST=api-router-service \
             -e SEED_EMAIL_SYNC_HOST=email-sync-service \
+            -e SEED_REALTIME_HOST=realtime-service \
             -e SEED_CALENDAR_HOST=api-router-service \
             -e SEED_DOCUMENTS_HOST=api-router-service \
             -e SEED_EMPLOYEES_HOST=api-router-service \
@@ -214,6 +237,13 @@ case $CMD in
             node:24-alpine \
             sh -c "node scripts/seed-keycloak.cjs && node scripts/seed.cjs"
         success "Seeding complete!"
+        ;;
+    reseed)
+        info "Recreating showcase data for $ENV environment..."
+        "$0" "$ENV" clean
+        "$0" "$ENV" up
+        "$0" "$ENV" seed
+        success "Reseed complete!"
         ;;
     clean)
         info "Cleaning environment volumes..."

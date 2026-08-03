@@ -14,7 +14,10 @@
     "compose:up": "yarn compose:dev",
     "compose:down": "./manage.sh dev down",
     "compose:ps": "./manage.sh dev ps",
-    "check:no-hardcoded-runtime": "node scripts/check-no-hardcoded-runtime.mjs"
+    "check:no-hardcoded-runtime": "node scripts/check-no-hardcoded-runtime.mjs",
+    "test:unit": "yarn workspace odoo-integration-service test --runInBand && yarn workspace @mymanager/integrations-service test && yarn workspace @mymanager/email-sync-service test && yarn workspace @mymanager/organization-service test && yarn workspace booking-service test",
+    "test:e2e": "yarn workspace micro-app cy:run",
+    "test:all": "yarn test:unit && yarn test:e2e"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",

@@ -84,7 +84,11 @@ export class AppointmentsService {
 
   async update(orgId: string, id: string, data: UpdateAppointmentDto) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
-    const { count } = await this.appointmentsRepository.updateMany(orgId, id, data);
+    const { count } = await this.appointmentsRepository.updateMany(
+      orgId,
+      id,
+      data as Record<string, unknown>,
+    );
 
     if (count === 0) throw new NotFoundException(`Appointment ${id} not found`);
     return this.findOne(orgId, id);

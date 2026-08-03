@@ -1,6 +1,6 @@
 import { SyncService } from './src/modules/sync/sync.service.js';
 import { OdooClientService } from './src/modules/odoo-base/odoo-client.service.js';
-import { PrismaService } from './src/common/prisma/prisma.service.js';
+import { PrismaService } from './src/database/prisma/prisma.service.js';
 import { ConfigService } from '@nestjs/config';
 
 // Patch axios for the get request

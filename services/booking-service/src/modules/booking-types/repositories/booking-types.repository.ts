@@ -11,7 +11,7 @@ type NestedAvailabilityInput = {
 };
 
 function stripAvailabilityBinding(
-  availability: { bookingTypeId?: string; [key: string]: unknown },
+  availability: any,
 ): NestedAvailabilityInput {
   const { bookingTypeId: _bookingTypeId, ...rest } = availability;
   return rest as NestedAvailabilityInput;

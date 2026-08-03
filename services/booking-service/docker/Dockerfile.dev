@@ -21,7 +21,7 @@ COPY services/${SERVICE_NAME} ./services/${SERVICE_NAME}
 
 WORKDIR /app/services/${SERVICE_NAME}
 # Handle prisma if present
-RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
+RUN if [ -f "src/database/prisma/schema.prisma" ]; then npx prisma generate --schema src/database/prisma/schema.prisma; fi
 
 COPY services/${SERVICE_NAME}/docker/entrypoint.standalone.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

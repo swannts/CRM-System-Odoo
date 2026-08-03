@@ -6,6 +6,9 @@ This repository uses Yarn workspaces from the root `package.json`.
 
 - Install: `yarn install --frozen-lockfile`
 - Runtime safety check: `yarn check:no-hardcoded-runtime`
+- Run unit test suites: `yarn test:unit`
+- Run frontend E2E Cypress tests: `yarn test:e2e`
+- Run all tests: `yarn test:all`
 
 ## Frontend
 

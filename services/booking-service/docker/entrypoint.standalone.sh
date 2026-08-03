@@ -10,9 +10,9 @@ if [ ! -d "node_modules" ] || [ ! "$(ls -A node_modules 2>/dev/null)" ]; then
 fi
 
 # Generate Prisma client if schema exists
-if [ -d "prisma" ]; then
+if [ -f "src/database/prisma/schema.prisma" ]; then
   echo "Generating Prisma client..."
-  yarn prisma generate
+  yarn prisma:generate
 fi
 
 echo "Handing over to: $@"

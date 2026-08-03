@@ -10,7 +10,7 @@ export class AppointmentsRepository {
       data: {
         ...data,
         orgId,
-      },
+      } as any,
     });
   }
 
@@ -47,7 +47,7 @@ export class AppointmentsRepository {
   updateMany(orgId: string, id: string, data: Record<string, unknown>) {
     return this.prisma.appointment.updateMany({
       where: { id, orgId },
-      data,
+      data: data as any,
     });
   }
 
