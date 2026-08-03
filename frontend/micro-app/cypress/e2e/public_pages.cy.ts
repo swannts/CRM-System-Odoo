@@ -1,28 +1,71 @@
-describe('Public Pages and Support', () => {
-  it('should display the login page correctly', () => {
-    cy.visit('/login');
-    cy.contains('Sign in').should('be.visible');
-  });
+import { paths } from 'src/routes/paths';
 
-  it('should display the registration page', () => {
-    // Note: We might have disabled this in Keycloak but let's check the route
-    cy.visit('/register');
-    // If it redirects or shows something specific
-  });
+const publicRoutes = [
+  {
+    label: 'login',
+    path: paths.public.login,
+    checks: ['Sign in to your account', 'Email address', 'Sign in'],
+  },
+  {
+    label: 'register',
+    path: paths.public.register,
+    checks: ['Get started absolutely free', 'First name', 'Create account'],
+  },
+  {
+    label: 'login code',
+    path: paths.public.loginCode,
+    checks: ['Sign In With Code', 'Login', 'Register'],
+  },
+  {
+    label: 'forgot password',
+    path: paths.public.forgotPassword,
+    checks: ['Forgot Password', 'Login', 'Register'],
+  },
+  {
+    label: 'onboarding',
+    path: paths.public.onboarding,
+    checks: ['Onboarding', 'Login', 'Register'],
+  },
+  {
+    label: 'verified',
+    path: paths.public.verified,
+    checks: ['Verified'],
+  },
+  {
+    label: 'notifications',
+    path: paths.public.notifications,
+    checks: ['Notifications'],
+  },
+  {
+    label: 'mobile settings',
+    path: paths.public.mobileSettings,
+    checks: ['Mobile Settings'],
+  },
+  {
+    label: 'mobile menu',
+    path: paths.public.mobileMenu,
+    checks: ['Mobile Menu'],
+  },
+  {
+    label: 'help center',
+    path: paths.public.helpCenter,
+    checks: ['Help Center'],
+  },
+  {
+    label: 'plans',
+    path: paths.public.plans,
+    checks: ['Plans', 'planId:', 'duration:'],
+  },
+] as const;
 
-  it('should display the help center', () => {
-    cy.visit('/help-center');
-    cy.get('h4').should('contain', 'Help Center');
-    cy.get('input[placeholder*="Search"]').should('exist');
-  });
-
-  it('should display public shop landing page', () => {
-    // Testing a generic shop path if possible
-    // cy.visit('/shop/my-shop');
-  });
-
-  it('should display onboarding for new users', () => {
-    cy.visit('/onboarding');
-    // Check for onboarding steps
+describe('Public Pages Access', () => {
+  publicRoutes.forEach((route) => {
+    it(`renders the public route: ${route.label}`, () => {
+      cy.visit(route.path, { failOnStatusCode: false });
+      route.checks.forEach((text) => {
+        cy.contains(text).should('be.visible');
+      });
+      cy.get('body').should('not.contain', 'Unhandled Runtime Error');
+    });
   });
 });

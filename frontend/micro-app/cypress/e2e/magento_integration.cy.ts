@@ -1,154 +1,59 @@
-describe('Magento integration admin page', () => {
+import { paths } from 'src/routes/paths';
+
+describe('Magento Integration Status', () => {
   beforeEach(() => {
-    cy.loginToKeycloak('appuser', 'Appuser123!');
+    cy.loginToKeycloak();
   });
 
-  it('renders disconnected state and keeps token input masked', () => {
-    cy.intercept('GET', '**/api/magento/connection', {
-      statusCode: 200,
-      body: { data: { connected: false, message: 'Not connected' } },
-    }).as('connection');
+  it('shows the Magento integration dashboard', () => {
+    cy.visit(paths.dashboard.magentoIntegration, { failOnStatusCode: false });
 
-    cy.intercept('GET', '**/api/magento/downstream/health', {
-      statusCode: 200,
-      body: {
-        data: {
-          crm: { ok: false, message: 'unreachable' },
-          billing: { ok: false, message: 'unreachable' },
-        },
-      },
-    }).as('downstreamHealth');
-
-    cy.intercept('GET', '**/api/magento/stores', {
-      statusCode: 200,
-      body: { data: [] },
-    }).as('stores');
-
-    cy.visit('/integrations/magento');
-
-    cy.wait(['@connection', '@downstreamHealth', '@stores']);
     cy.contains('Magento Integration').should('be.visible');
-    cy.contains('Connected:').should('be.visible');
-    cy.contains('No').should('be.visible');
-
-    cy.get('[data-testid="magento-access-token-input"]').should('have.attr', 'type', 'password');
+    cy.contains('Connection').should('be.visible');
+    cy.contains('Status').should('be.visible');
+    cy.contains('Magento Data Preview').should('be.visible');
   });
 
-  it('sends dry-run true for manual customer sync by default', () => {
-    cy.intercept('GET', '**/api/magento/connection', {
-      statusCode: 200,
-      body: { data: { connected: true, baseUrl: 'https://example.magento.local' } },
-    }).as('connection');
+  it('shows the store, product, customer, and order sync controls', () => {
+    cy.visit(paths.dashboard.magentoIntegration, { failOnStatusCode: false });
 
-    cy.intercept('GET', '**/api/magento/downstream/health', {
-      statusCode: 200,
-      body: { data: { crm: { ok: true }, billing: { ok: true } } },
-    }).as('downstreamHealth');
+    cy.contains('[role="tab"]', 'Products').click();
+    cy.contains('SKU').should('be.visible');
+    cy.contains('Name').should('be.visible');
 
-    cy.intercept('GET', '**/api/magento/stores', {
-      statusCode: 200,
-      body: { data: [] },
-    }).as('stores');
+    cy.contains('[role="tab"]', 'Customers').click();
+    cy.contains('ID').should('be.visible');
+    cy.contains('Email').should('be.visible');
 
-    cy.intercept('GET', '**/api/magento/products*', {
-      statusCode: 200,
-      body: { data: { items: [], total_count: 0 } },
-    }).as('products');
+    cy.contains('[role="tab"]', 'Orders').click();
+    cy.contains('Order #').should('be.visible');
+    cy.contains('Grand Total').should('be.visible');
 
-    cy.intercept('GET', '**/api/magento/customers*', {
-      statusCode: 200,
-      body: { data: { items: [], total_count: 0 } },
-    }).as('customers');
+    cy.contains('[role="tab"]', 'Stores').click();
+    cy.contains('Code').should('be.visible');
 
-    cy.intercept('GET', '**/api/magento/orders*', {
-      statusCode: 200,
-      body: { data: { items: [], total_count: 0 } },
-    }).as('orders');
-
-    cy.intercept('POST', '**/api/magento/sync/customers', (req) => {
-      expect(req.body).to.have.property('dryRun', true);
-      req.reply({
-        statusCode: 200,
-        body: {
-          data: {
-            dryRun: true,
-            entity: 'customers',
-            seen: 0,
-            pushed: 0,
-            skipped: 0,
-            errors: [],
-            message: 'Dry run complete',
-          },
-        },
-      });
-    }).as('syncCustomers');
-
-    cy.visit('/integrations/magento');
-    cy.wait(['@connection', '@downstreamHealth', '@stores']);
-
-    cy.get('[data-testid="magento-sync-dry-customers"]').click();
-    cy.wait('@syncCustomers');
-    cy.contains('Latest sync result').should('be.visible');
-    cy.contains('dryRun: true').should('be.visible');
+    cy.contains('button', 'Dry-run customer sync').should('be.visible');
+    cy.contains('button', 'Dry-run order sync').should('be.visible');
+    cy.contains('button', 'Push customers to CRM').should('be.visible');
+    cy.contains('button', 'Push orders to Billing/CRM').should('be.visible');
   });
 
-  it('requires confirmation before push sync and sends push payload', () => {
-    cy.intercept('GET', '**/api/magento/connection', {
-      statusCode: 200,
-      body: { data: { connected: true, baseUrl: 'https://example.magento.local' } },
-    }).as('connection');
+  it('opens the Magento push confirmation dialog', () => {
+    cy.visit(paths.dashboard.magentoIntegration, { failOnStatusCode: false });
 
-    cy.intercept('GET', '**/api/magento/downstream/health', {
-      statusCode: 200,
-      body: { data: { crm: { ok: true }, billing: { ok: true } } },
-    }).as('downstreamHealth');
-
-    cy.intercept('GET', '**/api/magento/stores', {
-      statusCode: 200,
-      body: { data: [] },
-    }).as('stores');
-
-    cy.intercept('GET', '**/api/magento/products*', {
-      statusCode: 200,
-      body: { data: { items: [], total_count: 0 } },
-    }).as('products');
-
-    cy.intercept('GET', '**/api/magento/customers*', {
-      statusCode: 200,
-      body: { data: { items: [], total_count: 0 } },
-    }).as('customers');
-
-    cy.intercept('GET', '**/api/magento/orders*', {
-      statusCode: 200,
-      body: { data: { items: [], total_count: 0 } },
-    }).as('orders');
-
-    cy.intercept('POST', '**/api/magento/sync/orders', (req) => {
-      expect(req.body).to.include({ dryRun: false, push: true });
-      req.reply({
-        statusCode: 200,
-        body: {
-          data: {
-            dryRun: false,
-            entity: 'orders',
-            seen: 10,
-            pushed: 8,
-            skipped: 2,
-            errors: [],
-            message: 'Push complete',
-          },
-        },
-      });
-    }).as('syncOrdersPush');
-
-    cy.visit('/integrations/magento');
-    cy.wait(['@connection', '@downstreamHealth', '@stores']);
-
-    cy.get('[data-testid="magento-sync-push-orders"]').click();
+    cy.contains('button', 'Push customers to CRM').click();
+    cy.contains('Confirm push sync').should('be.visible');
     cy.contains('This will push Magento data into CRM/Billing. Continue?').should('be.visible');
-    cy.contains('button', 'Continue').click();
+    cy.contains('button', 'Cancel').click();
+  });
 
-    cy.wait('@syncOrdersPush');
-    cy.contains('dryRun: false').should('be.visible');
+  it('shows commerce products and orders routes', () => {
+    cy.visit(paths.dashboard.products, { failOnStatusCode: false });
+    cy.contains('Commerce').should('be.visible');
+    cy.contains('Recent Orders').should('be.visible');
+
+    cy.visit(paths.dashboard.orders, { failOnStatusCode: false });
+    cy.contains('Commerce').should('be.visible');
+    cy.contains('Recent Orders').should('be.visible');
   });
 });

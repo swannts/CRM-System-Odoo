@@ -1,31 +1,72 @@
+import { paths } from 'src/routes/paths';
+
 describe('Billing Live Flows', () => {
   beforeEach(() => {
-    cy.loginToKeycloak('appuser', 'Appuser123!');
+    cy.loginToKeycloak();
   });
 
-  it('shows billing list with summary cards and reconciliation panel', () => {
-    cy.visit('/dashboard/billing');
-    cy.get('h4').contains('Billing');
-    cy.contains('Total Revenue').should('exist');
-    cy.contains('Paid').should('exist');
-    cy.contains('Outstanding').should('exist');
-    cy.contains('Reconciliation (Odoo vs Magento)').should('exist');
-    cy.get('table').should('exist');
+  it('shows billing list summary cards and reconciliation panel', () => {
+    cy.visit(paths.dashboard.billing, { failOnStatusCode: false });
+
+    cy.contains('Billing').should('be.visible');
+    cy.contains('Total Revenue').should('be.visible');
+    cy.contains('Paid').should('be.visible');
+    cy.contains('Outstanding').should('be.visible');
+    cy.contains('Reconciliation (Odoo vs Magento)').should('be.visible');
+    cy.get('input[placeholder="Search invoices..."]').should('be.visible');
   });
 
-  it('opens invoice action menu from billing list', () => {
-    cy.visit('/dashboard/billing');
-    cy.get('tbody tr').then(($rows) => {
-      if ($rows.length > 0) {
-        cy.wrap($rows[0]).find('button').last().click({ force: true });
-        cy.contains('View Details').should('exist');
-        cy.contains('Edit').should('exist');
-        cy.contains('Post Invoice').should('exist');
-        cy.contains('Download PDF').should('exist');
-      } else {
-        cy.contains('No data found').should('exist');
-      }
+  it('switches to graph view and shows the billing trend section', () => {
+    cy.visit(`${paths.dashboard.billing}?view=graph`, { failOnStatusCode: false });
+
+    cy.contains('Billing Trend (Last 6 Months)').should('be.visible');
+    cy.contains('Live monthly invoice, paid, and outstanding totals from Odoo billing data.').should('be.visible');
+    cy.contains('button', 'New Invoice').should('be.visible');
+  });
+
+  it('opens the invoice row action menu', () => {
+    cy.visit(paths.dashboard.billing, { failOnStatusCode: false });
+
+    cy.get('tbody tr').first().within(() => {
+      cy.get('button').last().click();
     });
+
+    cy.contains('View Details').should('be.visible');
+    cy.contains('Edit').should('be.visible');
+    cy.contains('Download PDF').should('be.visible');
+  });
+
+  it('navigates from the invoice list to the preview and edit routes', () => {
+    cy.visit(paths.dashboard.billing, { failOnStatusCode: false });
+
+    cy.get('tbody tr').first().within(() => {
+      cy.get('button').last().click();
+    });
+
+    cy.contains('View Details').click();
+    cy.contains('Invoice #').should('be.visible');
+    cy.contains('Customer:').should('be.visible');
+    cy.contains('button', 'Download PDF').should('be.visible');
+
+    cy.visit(paths.dashboard.billing, { failOnStatusCode: false });
+    cy.get('tbody tr').first().within(() => {
+      cy.get('button').last().click();
+    });
+
+    cy.contains('Edit').click();
+    cy.contains('Edit Invoice').should('be.visible');
+    cy.contains('Customer Name').should('be.visible');
+    cy.contains('Description / Service Name').should('be.visible');
+    cy.contains('button', 'Save Invoice').should('be.visible');
+  });
+
+  it('renders the create invoice form', () => {
+    cy.visit(paths.dashboard.invoiceNew, { failOnStatusCode: false });
+
+    cy.contains('Create Invoice').should('be.visible');
+    cy.contains('Customer Name').should('be.visible');
+    cy.contains('Description / Service Name').should('be.visible');
+    cy.contains('Due Date').should('be.visible');
+    cy.contains('button', 'Create Invoice').should('be.visible');
   });
 });
-

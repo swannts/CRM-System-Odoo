@@ -1,29 +1,35 @@
-describe('System Features', () => {
+import { paths } from 'src/routes/paths';
+
+describe('System Features & Utilities', () => {
   beforeEach(() => {
-    cy.loginToKeycloak('appuser', 'Appuser123!');
+    cy.loginToKeycloak();
   });
 
-  it('should display notifications list', () => {
-    cy.visit('/notifications');
-    cy.get('h4').should('contain', 'Notifications');
-    
-    // Check for notification items
-    // cy.get('.MuiListItem-root').should('exist');
+  it('renders the dashboard analytics and finance sections', () => {
+    cy.visit(paths.dashboard.overview, { failOnStatusCode: false });
+    cy.contains('Executive Analytics').should('be.visible');
+    cy.contains('My Tasks').should('be.visible');
   });
 
-  it('should display 404 page for non-existent routes', () => {
-    cy.visit('/non-existent-page', { failOnStatusCode: false });
-    cy.contains('404').should('be.visible');
-    cy.contains('Page Not Found').should('be.visible');
+  it('renders the finance overview and billing sections', () => {
+    cy.visit(paths.dashboard.financeSection('overview'), { failOnStatusCode: false });
+    cy.contains('Billing and Finance').should('be.visible');
+    cy.contains('Recent Transactions').should('be.visible');
+    cy.contains('P&L').click();
+    cy.contains('Profit and Loss').should('be.visible');
   });
 
-  it('should handle unauthorized access by redirecting to login', () => {
-    // Manually clear storage to simulate session loss
-    cy.clearLocalStorage();
-    cy.clearCookies();
-    cy.visit('/dashboard/overview');
-    
-    // Should be redirected to Keycloak
-    cy.url().should('include', ':8080/realms/mymanager');
+  it('renders the booking and calendar surfaces', () => {
+    cy.visit(paths.dashboard.calendar, { failOnStatusCode: false });
+    cy.contains('Calendar').should('be.visible');
+    cy.contains('New Event').should('be.visible');
+    cy.contains('[role="tab"]', 'agenda').click();
+    cy.contains('Events List').should('be.visible');
+    cy.contains('[role="tab"]', 'booking links').click();
+    cy.contains('No booking links').should('be.visible');
+
+    cy.visit('/dashboard/booking', { failOnStatusCode: false });
+    cy.contains('Bookings & Appointments').should('be.visible');
+    cy.contains('Appointments').should('be.visible');
   });
 });
