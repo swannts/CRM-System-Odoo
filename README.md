@@ -1,5 +1,3 @@
-# crm
-
 # Microservices (New Architecture)
 
 This directory contains the new microservices-based backend for **mymanager**.
