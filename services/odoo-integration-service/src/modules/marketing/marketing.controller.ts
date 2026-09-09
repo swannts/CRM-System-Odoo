@@ -23,6 +23,8 @@ import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { MarketingService } from './marketing.service.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { IdentityGuard } from '../../common/guards/identity.guard.js';
+import { CurrentUser } from '../../common/decorators/user.decorator.js';
+import type { Identity } from '../../common/interfaces/identity.interface.js';
 import { createHmac } from 'crypto';
 
 @ApiTags('Marketing')
@@ -287,13 +289,12 @@ export class MarketingController {
   async updateCampaignContent(
     @Param('id', ParseIntPipe) id: number,
     @Body() data: any,
-    @Headers('x-org-id') orgId?: string,
-    @Headers('x-user-id') userId?: string,
+    @CurrentUser() user: Identity,
   ) {
     const campaign = await this.marketingService.updateCampaignContent(
       id,
       data,
-      { orgId, userId },
+      { orgId: user.orgId, userId: user.userId },
     );
     return campaign;
   }
@@ -621,19 +622,16 @@ export class MarketingController {
 
   @Post('contacts/:id/consent')
   async upsertConsent(
-    @Headers('x-org-id') orgId?: string,
-    @Headers('x-user-id') userId?: string,
+    @CurrentUser() user: Identity,
     @Param('id') contactId?: string,
     @Body() payload?: any,
   ) {
-    if (!orgId)
-      throw new UnauthorizedException('Missing organization context.');
     try {
       return await this.marketingService.upsertContactConsent(
-        orgId,
+        user.orgId,
         String(contactId),
         payload,
-        userId,
+        user.userId,
       );
     } catch (error: any) {
       if (error instanceof HttpException) throw error;

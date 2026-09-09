@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from 'src/store/hooks';
 import { fetchSummary, fetchOverallAnalytics, selectMarketing } from 'src/store/slices/marketing-slice';

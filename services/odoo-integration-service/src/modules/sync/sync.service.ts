@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OdooClientService } from '../odoo-base/odoo-client.service.js';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import axios from 'axios';
+import { getServiceAccessToken } from '@mymanager/node-service-kit';
 
 @Injectable()
 export class SyncService {
@@ -13,16 +14,19 @@ export class SyncService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async syncMagentoCustomers(orgId: string) {
+  async syncMagentoCustomers(orgId: string, authorization?: string) {
     if (!this.magentoUrl) {
       throw new Error('Missing MAGENTO_INTEGRATION_URL');
     }
+    const requestAuthorization = authorization?.startsWith('Bearer ')
+      ? authorization
+      : await getServiceAccessToken();
     this.logger.log(`Starting Magento customer sync for org: ${orgId}`);
     try {
       const response = await axios.get(
         `${this.magentoUrl}/v1/magento/customers`,
         {
-          headers: { 'x-org-id': orgId, 'x-user-id': 'system-sync' },
+          headers: { Authorization: requestAuthorization, 'x-org-id': orgId },
         },
       );
 
@@ -101,14 +105,17 @@ export class SyncService {
     }
   }
 
-  async syncMagentoOrders(orgId: string) {
+  async syncMagentoOrders(orgId: string, authorization?: string) {
     if (!this.magentoUrl) {
       throw new Error('Missing MAGENTO_INTEGRATION_URL');
     }
+    const requestAuthorization = authorization?.startsWith('Bearer ')
+      ? authorization
+      : await getServiceAccessToken();
     this.logger.log(`Starting Magento order sync for org: ${orgId}`);
     try {
       const response = await axios.get(`${this.magentoUrl}/v1/magento/orders`, {
-        headers: { 'x-org-id': orgId, 'x-user-id': 'system-sync' },
+        headers: { Authorization: requestAuthorization, 'x-org-id': orgId },
       });
 
       const orders = response.data?.data?.items || [];

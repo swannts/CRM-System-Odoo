@@ -10,7 +10,7 @@ const { app, logger } = createServiceApp({
 
 registerRoutes(app);
 
-app.get('/health', (_req, res) => {
+app.get('/health', (_req: any, res: any) => {
   res.json({ status: 'ok', service: config.serviceName });
 });
 

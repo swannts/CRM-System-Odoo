@@ -315,8 +315,8 @@ export class MagentoIntegrationService {
       method,
       headers: { 
         'Content-Type': 'application/json',
-        'X-User-Id': identity.userId,
         'X-Org-Id': identity.orgId || '',
+        ...(identity.authorization ? { Authorization: identity.authorization } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -384,8 +384,8 @@ export class OdooIntegrationService {
       method,
       headers: { 
         'Content-Type': 'application/json',
-        'X-User-Id': identity.userId,
         'X-Org-Id': identity.orgId || '',
+        ...(identity.authorization ? { Authorization: identity.authorization } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });

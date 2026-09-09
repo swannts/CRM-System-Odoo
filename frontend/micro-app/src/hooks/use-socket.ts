@@ -9,9 +9,14 @@ export function useSocket(orgId?: string, onEvent?: (event: string, data: any) =
   useEffect(() => {
     if (!orgId) return;
 
-    // For now we use a dummy token or get it from auth state
-    const token = localStorage.getItem('accessToken') || '';
+    const token = sessionStorage.getItem('accessToken') || '';
     const socket = socketClient.connect(token, orgId);
+
+    const handleTokenRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ token?: string; orgId?: string }>).detail;
+      if (detail?.token && detail.orgId === orgId) socketClient.connect(detail.token, orgId);
+    };
+    window.addEventListener('auth-token-refreshed', handleTokenRefresh);
 
     const handleAny = (event: string, ...args: any[]) => {
       onEventRef.current?.(event, args[0]);
@@ -21,6 +26,7 @@ export function useSocket(orgId?: string, onEvent?: (event: string, data: any) =
 
     return () => {
       socket.offAny(handleAny);
+      window.removeEventListener('auth-token-refreshed', handleTokenRefresh);
     };
   }, [orgId]);
 

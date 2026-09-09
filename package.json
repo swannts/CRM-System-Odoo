@@ -2,6 +2,11 @@
   "name": "@mymanager/microservices",
   "private": true,
   "type": "module",
+  "packageManager": "yarn@1.22.22",
+  "engines": {
+    "node": ">=20 <25",
+    "yarn": "1.22.22"
+  },
   "workspaces": [
     "services/*",
     "frontend/*",
@@ -15,6 +20,11 @@
     "compose:down": "./manage.sh dev down",
     "compose:ps": "./manage.sh dev ps",
     "check:no-hardcoded-runtime": "node scripts/check-no-hardcoded-runtime.mjs",
+    "typecheck:frontend": "yarn workspace micro-app typecheck",
+    "lint:frontend": "yarn workspace micro-app lint",
+    "build:frontend": "yarn workspace micro-app build",
+    "build:services": "yarn workspace @mymanager/api-router-service build && yarn workspace odoo-integration-service build && yarn workspace @mymanager/email-sync-service build && yarn workspace @mymanager/organization-service build && yarn workspace booking-service build && yarn workspace @mymanager/integrations-service build && yarn workspace @mymanager/realtime-service build",
+    "prisma:check": "node scripts/check-prisma.mjs",
     "test:unit": "yarn workspace odoo-integration-service test --runInBand && yarn workspace @mymanager/integrations-service test && yarn workspace @mymanager/email-sync-service test && yarn workspace @mymanager/organization-service test && yarn workspace booking-service test",
     "test:e2e": "yarn workspace micro-app cy:run",
     "test:all": "yarn test:unit && yarn test:e2e"
@@ -28,6 +38,7 @@
     "@azure/identity": "^4.13.1",
     "@prisma/client": "6.19.3",
     "googleapis": "^171.4.0",
+    "jsonwebtoken": "^9.0.3",
     "microsoft-graph": "^3.13.34",
     "socket.io": "^4.8.1"
   }

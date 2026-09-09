@@ -1,6 +1,6 @@
 import http from "node:http";
 import { Server as SocketIOServer } from "socket.io";
-import { createServiceApp, startKafkaConsumer } from "@mymanager/node-service-kit";
+import { createServiceApp, requireOrganizationMembership, startKafkaConsumer, verifyAccessToken } from "@mymanager/node-service-kit";
 import { 
   LiveChatChannelController, 
   LiveChatMessageController, 
@@ -14,6 +14,7 @@ import {
   InboxCompatController
 } from "./controllers/index.js";
 import { identityMiddleware } from "./middleware/identity.js";
+import { LiveChatChannelRepository } from "./repositories/livechat/channel.repository.js";
 
 const { app, logger } = createServiceApp({ serviceName: "realtime-service", jsonLimit: "10mb" });
 const auth = identityMiddleware;
@@ -30,21 +31,24 @@ const omniMsgCtrl = new OmniMessageController();
 const omniAICtrl = new OmniAIController();
 const omniAgentCtrl = new OmniAgentController();
 const inboxCompatCtrl = new InboxCompatController();
+const channelRepo = new LiveChatChannelRepository();
 
 // --- Live Chat ---
 app.post("/v1/livechat/channels", auth, (req: any, res: any) => channelCtrl.getChannelsByAdminId(cast(req), res));
 app.get("/v1/livechat/channel/:channelId", auth, (req: any, res: any) => channelCtrl.getChannelById(cast(req), res));
 app.delete("/v1/livechat/channel/:channelId/:contactId", auth, (req: any, res: any) => channelCtrl.deleteChannel(cast(req), res));
 
-app.get("/v1/livechat/chathistory/:channelId", (req: any, res: any) => messageCtrl.getChatHistory(cast(req), res));
-app.post("/v1/livechat/newmessage", (req: any, res: any) => messageCtrl.addMessage(cast(req), res));
+app.get("/v1/livechat/chathistory/:channelId", auth, (req: any, res: any) => messageCtrl.getChatHistory(cast(req), res));
+app.post("/v1/livechat/newmessage", auth, (req: any, res: any) => messageCtrl.addMessage(cast(req), res));
 app.get("/v1/livechat/chats-and-contacts", auth, (req: any, res: any) => messageCtrl.getChatsAndContacts(cast(req), res));
 
 app.post("/v1/livechat/contact", auth, (req: any, res: any) => contactCtrl.createContact(cast(req), res));
 
 app.post("/v1/livechat/widget-setting", auth, (req: any, res: any) => widgetCtrl.saveSetting(cast(req), res));
 app.get("/v1/livechat/widget-setting", auth, (req: any, res: any) => widgetCtrl.getSetting(cast(req), res));
-app.get("/v1/livechat/widget-setting/pub", (req: any, res: any) => widgetCtrl.getPublicSetting(cast(req), res));
+app.get("/v1/livechat/widget-setting/pub", (_req: any, res: any) => res.status(501).json({
+  message: "Public widget settings require a scoped public token and are not enabled yet.",
+}));
 app.post("/v1/livechat/widget-setting/send-code", auth, (req: any, res: any) => widgetCtrl.sendCode(cast(req), res));
 
 app.get("/v1/livechat/statistics", auth, (req: any, res: any) => statsCtrl.getStatistics(cast(req), res));
@@ -87,31 +91,79 @@ app.post("/v1/notifications/mark-seen/:id/:userId", auth, (req: any, res: any) =
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
   cors: { 
-    origin: process.env.ALLOWED_ORIGIN || "*",
+    origin: (process.env.ALLOWED_ORIGIN || "").split(",").map((origin) => origin.trim()).filter(Boolean),
     credentials: true
+  }
+});
+
+io.use(async (socket, next) => {
+  try {
+    const token = typeof socket.handshake.auth?.token === "string" ? socket.handshake.auth.token : null;
+    const orgId = typeof socket.handshake.auth?.orgId === "string" ? socket.handshake.auth.orgId : null;
+    const claims = await verifyAccessToken(token ? `Bearer ${token}` : null, {
+      issuer: process.env.KEYCLOAK_ISSUER,
+      audience: process.env.KEYCLOAK_CLIENT_ID || "mymanager-web",
+    });
+    const userId = typeof claims.sub === "string" ? claims.sub : null;
+    if (!userId || !orgId) return next(new Error("Authenticated organization is required"));
+    const membership = await fetch(`${process.env.ORGANIZATION_SERVICE_URL || "http://organization-service:7010"}/v1/memberships/resolve`, {
+      headers: { Authorization: `Bearer ${token}`, "X-Org-Id": orgId },
+    });
+    if (!membership.ok) return next(new Error("Organization membership denied"));
+    socket.data.userId = userId;
+    socket.data.orgId = orgId;
+    socket.data.token = token;
+    next();
+  } catch {
+    next(new Error("Invalid or expired access token"));
   }
 });
 
 io.on("connection", (socket) => {
   logger.info({ id: socket.id }, "socket connected");
+
+  socket.use(async (_packet, next) => {
+    try {
+      const token = socket.data.token as string;
+      const claims = await verifyAccessToken(`Bearer ${token}`, {
+        issuer: process.env.KEYCLOAK_ISSUER,
+        audience: process.env.KEYCLOAK_CLIENT_ID || "mymanager-web",
+      });
+      if (claims.sub !== socket.data.userId) return next(new Error("Socket identity changed"));
+      const membership = await requireOrganizationMembership({
+        orgId: socket.data.orgId,
+        userId: socket.data.userId,
+        authorization: `Bearer ${token}`,
+      });
+      if (!membership) return next(new Error("Organization membership denied"));
+      next();
+    } catch {
+      next(new Error("Socket session expired or membership revoked"));
+    }
+  });
   
   socket.on("join-org", (orgId: string) => {
+    if (orgId !== socket.data.orgId) return;
     socket.join(`org:${orgId}`);
     logger.info({ socketId: socket.id, orgId }, "socket joined org room");
   });
   
-  socket.on("join-channel", (channelId: string) => {
-    socket.join(`channel:${channelId}`);
+  socket.on("join-channel", async (channelId: string) => {
+    const channel = await channelRepo.findById(channelId);
+    if (!channel || channel.organizationId !== socket.data.orgId || !channel.isActive) return;
+    socket.join(`org:${socket.data.orgId}:channel:${channelId}`);
     logger.info({ socketId: socket.id, channelId }, "socket joined channel room");
   });
 
   // --- CRM Collaboration ---
   socket.on("join-contact", (data: { contactId: string; userId: string; userName: string }) => {
-    const { contactId, userId, userName } = data;
-    socket.join(`contact:${contactId}`);
+    const { contactId, userName } = data;
+    const userId = socket.data.userId;
+    const room = `org:${socket.data.orgId}:contact:${contactId}`;
+    socket.join(room);
     
     // Notify others in the room that someone is viewing
-    socket.to(`contact:${contactId}`).emit("contact:presence", {
+    socket.to(room).emit("contact:presence", {
       contactId,
       userId,
       userName,
@@ -122,15 +174,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on("contact:editing", (data: { contactId: string; userId: string; userName: string }) => {
-    socket.to(`contact:${data.contactId}`).emit("contact:presence", {
+    socket.to(`org:${socket.data.orgId}:contact:${data.contactId}`).emit("contact:presence", {
       ...data,
+      userId: socket.data.userId,
       action: 'editing'
     });
   });
 
   socket.on("contact:update", (data: { contactId: string; userId: string; updates: any }) => {
+    const room = `org:${socket.data.orgId}:contact:${data.contactId}`;
     // Broadcast to everyone in the contact room (including sender if needed, but usually sender already has it)
-    io.to(`contact:${data.contactId}`).emit("contact:updated", data);
+    io.to(room).emit("contact:updated", { ...data, userId: socket.data.userId });
     // Also broadcast to the org room for list view updates
     const rooms = Array.from(socket.rooms);
     const orgRoom = rooms.find(r => r.startsWith('org:'));
