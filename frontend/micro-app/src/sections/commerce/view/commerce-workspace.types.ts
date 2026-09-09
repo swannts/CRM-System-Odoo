@@ -188,6 +188,7 @@ export type CommerceWorkspaceProps = {
   productId?: string;
   cartId?: string;
   orderId?: string;
+  incomeId?: string;
   receiptId?: string;
   section?: string;
   type?: string;

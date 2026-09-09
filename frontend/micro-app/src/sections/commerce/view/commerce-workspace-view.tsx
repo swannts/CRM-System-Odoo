@@ -1,6 +1,6 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMemo, useState, useEffect, useCallback } from 'react';
@@ -13,7 +13,6 @@ import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import Typography from '@mui/material/Typography';
 import DialogTitle from '@mui/material/DialogTitle';
-import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import CircularProgress from '@mui/material/CircularProgress';
 
@@ -38,6 +37,7 @@ import {
   fetchInventoryLocations,
   fetchCommerceCouponsThunk,
 } from 'src/store/slices/commerce-slice';
+import { selectOrganization } from 'src/store/slices/organization-slice';
 
 import { toast } from 'src/components/snackbar';
 
@@ -172,6 +172,22 @@ export function CommerceWorkspaceView({
     defaultValues: DEFAULT_PRODUCT_FORM_VALUES,
   });
 
+  const { fields: variantFields, append: appendVariant, remove: removeVariant } = useFieldArray({
+    control: productMethods.control,
+    name: 'variants',
+  });
+  const {
+    fields: modifierGroupFields,
+    append: appendModifierGroup,
+    remove: removeModifierGroup,
+  } = useFieldArray({
+    control: productMethods.control,
+    name: 'modifierGroups',
+  });
+  const [productFormTab, setProductFormTab] = useState<'general' | 'variants' | 'modifiers'>(
+    'general'
+  );
+
   const categoryMethods = useForm<CategoryFormValues>({
     resolver: zodResolver(CATEGORY_FORM_SCHEMA),
     defaultValues: { name: '', description: '', isActive: true },
@@ -217,6 +233,26 @@ export function CommerceWorkspaceView({
 
   const dispatch = useAppDispatch();
   const commerceState = useAppSelector(selectCommerce);
+  const organizationState = useAppSelector(selectOrganization);
+  const inventoryLocations = useMemo(
+    () =>
+      (organizationState.locations.data || []).map((location: any) => ({
+        id: String(location.id ?? location.locationId ?? location.location_id ?? ''),
+        fullName: String(
+          location.fullName ?? location.name ?? location.display_name ?? location.displayName ?? location.id ?? ''
+        ),
+      })),
+    [organizationState.locations.data]
+  );
+  const inventoryProducts = useMemo(
+    () =>
+      (commerceState.products.items || []).map((product) => ({
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+      })),
+    [commerceState.products.items]
+  );
 
   const loadProducts = useCallback(() => {
     if (queryShopKey && !isStorefrontMode) {
@@ -294,6 +330,93 @@ export function CommerceWorkspaceView({
   const refreshOrders = useCallback(() => {
     dispatch(fetchCommerceOrders(resolvedOrgId));
   }, [dispatch, resolvedOrgId]);
+
+  const handleCreateProductClick = useCallback(() => {
+    setEditingId(null);
+    setProductFormTab('general');
+    productMethods.reset(DEFAULT_PRODUCT_FORM_VALUES);
+    productDialog.onTrue();
+  }, [productDialog, productMethods]);
+
+  const handleEditProduct = useCallback(
+    (product: ICommerceProduct) => {
+      setEditingId(product.id);
+      setProductFormTab('general');
+      productMethods.reset({
+        ...DEFAULT_PRODUCT_FORM_VALUES,
+        name: product.name || '',
+        categoryId: product.categoryId || '',
+        categoryName: product.categoryName || '',
+        sku: product.sku || '',
+        barcode: product.barcode || '',
+        description: product.description || '',
+        priceCents: product.priceCents || 0,
+        compareAtPriceCents: product.compareAtPriceCents || 0,
+        costCents: product.costCents || 0,
+        lowStockThreshold: product.lowStockThreshold || 0,
+        inventorySourceCode: 'default',
+        tagsText: Array.isArray(product.tags) ? product.tags.join(', ') : '',
+        photos: Array.isArray(product.photos) ? product.photos : [],
+        variants: Array.isArray(product.variants)
+          ? product.variants.map((variant) => ({
+              name: variant.name,
+              sku: variant.sku || '',
+              priceCents: variant.priceCents,
+              stock: variant.stock,
+            }))
+          : [],
+        modifierGroups: Array.isArray(product.modifierGroups)
+          ? product.modifierGroups.map((group) => ({
+              name: group.name,
+              minSelected: group.minSelected,
+              maxSelected: group.maxSelected,
+              modifiers: Array.isArray(group.modifiers)
+                ? group.modifiers.map((modifier) => ({
+                    name: modifier.name,
+                    priceCents: modifier.priceCents,
+                  }))
+                : [],
+            }))
+          : [],
+      });
+      productDialog.onTrue();
+    },
+    [productDialog, productMethods]
+  );
+
+  const handleCreateCategoryClick = useCallback(() => {
+    setEditingCategoryId(null);
+    categoryMethods.reset({ name: '', description: '', isActive: true });
+    categoryDialog.onTrue();
+  }, [categoryDialog, categoryMethods]);
+
+  const handleEditCategory = useCallback(
+    (category: ICommerceCategory) => {
+      setEditingCategoryId(category.id);
+      categoryMethods.reset({
+        name: category.name,
+        description: category.description ?? '',
+        isActive: category.isActive !== false,
+      });
+      categoryDialog.onTrue();
+    },
+    [categoryDialog, categoryMethods]
+  );
+
+  const handleCreateInventoryRecord = useCallback(
+    (_input: { productId: number; locationId: number; quantity: number }) => undefined,
+    []
+  );
+  const handleSaveInventoryRecord = useCallback((_id: string, _qty: number) => undefined, []);
+  const handleDeleteInventoryRecord = useCallback((_id: string) => undefined, []);
+  const handleToggleProductSelect = useCallback((id: string) => {
+    _setSelectedProductIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  }, []);
+  const handleToggleSelectAllProducts = useCallback((ids: string[], checked: boolean) => {
+    _setSelectedProductIds(checked ? ids : []);
+  }, []);
 
   // Mutations refactored to async/await with Redux refresh
   const handleCreateProduct = async (values: ProductFormValues) => {
@@ -629,24 +752,36 @@ export function CommerceWorkspaceView({
               <Button
                 variant="contained"
                 startIcon={<Iconify icon="mingcute:add-line" />}
-                onClick={() => {
-                  setEditingId(null);
-                  productMethods.reset(DEFAULT_PRODUCT_FORM_VALUES);
-                  productDialog.onTrue();
-                }}
+                onClick={handleCreateProductClick}
               >
                 New Product
               </Button>
            </Stack>
            <CommerceProductsTable
-             products={filteredProducts}
-             onEdit={(id) => {
-               setEditingId(id);
-               const prod = products.find(p => p.id === id);
-               if (prod) productMethods.reset(prod as any);
-               productDialog.onTrue();
-             }}
+             filteredProducts={filteredProducts}
+             categories={catalogCategories}
+             resolvedShopKey={resolvedShopKey}
+             search={search}
+             categoryFilter={productCategoryFilter}
+             statusFilter={productStatusFilter}
+             onCreate={handleCreateProductClick}
+             onSearchChange={_setSearch}
+             onCategoryFilterChange={_setProductCategoryFilter}
+             onStatusFilterChange={_setProductStatusFilter}
+             onEdit={handleEditProduct}
              onDelete={handleDeleteProduct}
+             selectedIds={_selectedProductIds}
+             onToggleSelect={handleToggleProductSelect}
+             onToggleSelectAll={handleToggleSelectAllProducts}
+             onBulkActivate={() => undefined}
+             onBulkArchive={() => undefined}
+             onBulkDelete={() => undefined}
+             onQuickInventorySave={() => undefined}
+             page={productPage}
+             rowsPerPage={productRowsPerPage}
+             totalRows={filteredProducts.length}
+             onPageChange={_setProductPage}
+             onRowsPerPageChange={_setProductRowsPerPage}
            />
         </Stack>
       )}
@@ -657,23 +792,17 @@ export function CommerceWorkspaceView({
               <Button
                 variant="contained"
                 startIcon={<Iconify icon="mingcute:add-line" />}
-                onClick={() => {
-                  setEditingCategoryId(null);
-                  categoryMethods.reset({ name: '', description: '', isActive: true });
-                  categoryDialog.onTrue();
-                }}
+                onClick={handleCreateCategoryClick}
               >
                 New Category
               </Button>
            </Stack>
            <CommerceCategoriesTable
-             categories={filteredCategories}
-             onEdit={(id) => {
-               setEditingCategoryId(id);
-               const cat = categories.find(c => c.id === id);
-               if (cat) categoryMethods.reset(cat);
-               categoryDialog.onTrue();
-             }}
+              categories={filteredCategories}
+             search={categorySearch}
+             onSearchChange={_setCategorySearch}
+             onCreate={handleCreateCategoryClick}
+             onEdit={handleEditCategory}
              onDelete={handleDeleteCategory}
            />
         </Stack>
@@ -688,6 +817,7 @@ export function CommerceWorkspaceView({
           onStatusFilterChange={setOrderStatusFilter}
           onView={handleViewOrder}
           onPay={handleViewOrder}
+          onReceipt={handleViewOrder}
           onMarkProcessing={handleMarkOrderProcessing}
           onMarkCompleted={handleMarkOrderCompleted}
         />
@@ -695,7 +825,19 @@ export function CommerceWorkspaceView({
 
       {currentModule === 'inventory' && (
         <CommerceInventoryTable
-          inventory={inventoryQuery.data?.items || []}
+          items={inventoryQuery.data?.items || []}
+          products={inventoryProducts}
+          locations={inventoryLocations}
+          search={inventorySearch}
+          onSearchChange={_setInventorySearch}
+          onCreate={handleCreateInventoryRecord}
+          onSave={handleSaveInventoryRecord}
+          onDelete={handleDeleteInventoryRecord}
+          page={productPage}
+          rowsPerPage={productRowsPerPage}
+          totalRows={inventoryQuery.data?.total || inventoryQuery.data?.items.length || 0}
+          onPageChange={_setProductPage}
+          onRowsPerPageChange={_setProductRowsPerPage}
         />
       )}
 
@@ -710,14 +852,30 @@ export function CommerceWorkspaceView({
       <Dialog open={productDialog.value} onClose={productDialog.onFalse} fullWidth maxWidth="md">
          <DialogTitle>{editingId ? 'Edit Product' : 'New Product'}</DialogTitle>
          <DialogContent>
-            <CommerceProductFormCard methods={productMethods} />
+            <CommerceProductFormCard
+              activeTab={productFormTab}
+              onTabChange={setProductFormTab}
+              productMethods={productMethods}
+              variantFields={variantFields}
+              appendVariant={appendVariant}
+              removeVariant={removeVariant}
+              modifierGroupFields={modifierGroupFields}
+              appendModifierGroup={appendModifierGroup}
+              removeModifierGroup={removeModifierGroup}
+              categories={catalogCategories.map((category) => ({
+                id: category.id,
+                name: category.name,
+              }))}
+              onUploadImages={() => undefined}
+              isUploadingImages={false}
+              onSubmit={productMethods.handleSubmit(editingId ? handleUpdateProduct : handleCreateProduct)}
+              isPending={productMethods.formState.isSubmitting}
+              editingId={editingId}
+              onCreateCategory={handleCreateCategoryClick}
+              onCancelEdit={productDialog.onFalse}
+              modal
+            />
          </DialogContent>
-         <DialogActions>
-            <Button onClick={productDialog.onFalse}>Cancel</Button>
-            <Button variant="contained" onClick={productMethods.handleSubmit(editingId ? handleUpdateProduct : handleCreateProduct)}>
-               {editingId ? 'Update' : 'Create'}
-            </Button>
-         </DialogActions>
       </Dialog>
     </DashboardContent>
   );

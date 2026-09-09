@@ -66,7 +66,6 @@ import type {
   ProductFormValues,
   CommerceDashboardModule,
 } from './commerce-workspace.types';
-import {event} from "next/dist/build/output/log";
 
 type SummaryCardsProps = {
   products: ICommerceProduct[];
@@ -866,7 +865,7 @@ export function CommerceProductsTable({
       >
         <MenuItem
           component={Link}
-          href={getProductHref(resolvedShopKey, activeActionProduct?.id || '')}
+          href={getProductHref(undefined, resolvedShopKey, activeActionProduct?.id || '')}
           onClick={closeActionsMenu}
         >
           <Stack direction="row" spacing={1} alignItems="center">
@@ -1796,7 +1795,7 @@ type OrdersTableProps = {
   onStatusFilterChange: (value: string) => void;
   onView: (orderId: string) => void;
   onPay: (orderId: string) => void;
-  onReceipt: (orderId: string) => void;
+  onReceipt?: (orderId: string) => void;
   onMarkProcessing: (orderId: string) => void;
   onMarkCompleted: (orderId: string) => void;
 };
@@ -1809,7 +1808,7 @@ export function CommerceOrdersTable({
   onStatusFilterChange,
   onView,
   onPay,
-  onReceipt: _onReceipt,
+  onReceipt,
   onMarkProcessing,
   onMarkCompleted,
 }: OrdersTableProps) {
@@ -1904,6 +1903,11 @@ export function CommerceOrdersTable({
                     <Button size="small" variant="soft" onClick={() => onView(item.id)}>
                       View
                     </Button>
+                    {onReceipt && (
+                      <Button size="small" variant="soft" onClick={() => onReceipt(item.id)}>
+                        Receipt
+                      </Button>
+                    )}
                     {item.paymentStatus !== 'paid' ? (
                       <Button
                         size="small"
@@ -3219,22 +3223,22 @@ type DashboardModulesProps = {
   modules?: Array<{ label: string; value: CommerceDashboardModule; icon?: string }>;
   currentModule: CommerceDashboardModule;
   onModuleChange: (value: CommerceDashboardModule) => void;
-  summaryCards: React.ReactNode;
-  productsTable: React.ReactNode;
-  productForm: React.ReactNode;
-  categoriesTable: React.ReactNode;
-  couponsTable: React.ReactNode;
-  ordersTable: React.ReactNode;
-  customersTable: React.ReactNode;
-  membershipsTable: React.ReactNode;
-  posPanel: React.ReactNode;
-  kdsPanel: React.ReactNode;
-  cfdPanel: React.ReactNode;
-  kioskPanel: React.ReactNode;
-  inventoryPanel: React.ReactNode;
-  designerPanel: React.ReactNode;
-  tablesPanel: React.ReactNode;
-  settingsPanel: React.ReactNode;
+  summaryCards?: React.ReactNode;
+  productsTable?: React.ReactNode;
+  productForm?: React.ReactNode;
+  categoriesTable?: React.ReactNode;
+  couponsTable?: React.ReactNode;
+  ordersTable?: React.ReactNode;
+  customersTable?: React.ReactNode;
+  membershipsTable?: React.ReactNode;
+  posPanel?: React.ReactNode;
+  kdsPanel?: React.ReactNode;
+  cfdPanel?: React.ReactNode;
+  kioskPanel?: React.ReactNode;
+  inventoryPanel?: React.ReactNode;
+  designerPanel?: React.ReactNode;
+  tablesPanel?: React.ReactNode;
+  settingsPanel?: React.ReactNode;
 };
 
 export function CommerceDashboardModules({
@@ -3299,6 +3303,7 @@ export function CommerceCategoryDialog({
   onClose,
   methods,
   editingId,
+  isEdit,
   onSubmit,
   isPending,
 }: {
@@ -3306,15 +3311,16 @@ export function CommerceCategoryDialog({
   onClose: () => void;
   methods: any;
   editingId?: string | null;
-  onSubmit: () => void;
-  isPending: boolean;
+  isEdit?: boolean;
+  onSubmit: (values: any) => void | Promise<void>;
+  isPending?: boolean;
 }) {
-  const isEditing = Boolean(editingId);
+  const isEditing = Boolean(editingId ?? isEdit);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{isEditing ? 'Edit category' : 'New category'}</DialogTitle>
-      <Form methods={methods} onSubmit={onSubmit}>
+      <Form methods={methods} onSubmit={methods.handleSubmit(onSubmit)}>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
             <RHFTextField name="name" label="Category name" />
@@ -3440,7 +3446,7 @@ export function CommerceOrderDetailDialog({
   onClose,
   order,
   onStatusUpdate,
-  onReceipt: _onReceipt,
+  onReceipt,
 }: {
   open: boolean;
   onClose: () => void;
