@@ -1,14 +1,18 @@
 # Build and CI Commands
 
-This repository uses Yarn workspaces from the root `package.json`.
+This repository uses Yarn `1.22.22` workspaces from the root `package.json`.
 
 ## Root
 
-- Install: `yarn install --frozen-lockfile`
+- Install: `corepack yarn install --frozen-lockfile`
 - Runtime safety check: `yarn check:no-hardcoded-runtime`
 - Run unit test suites: `yarn test:unit`
 - Run frontend E2E Cypress tests: `yarn test:e2e`
 - Run all tests: `yarn test:all`
+- Frontend typecheck: `yarn typecheck:frontend`
+- Frontend lint gate: `yarn lint:frontend`
+- Build all included services: `yarn build:services`
+- Validate and generate every Prisma schema: `yarn prisma:check`
 
 ## Frontend
 
@@ -29,10 +33,9 @@ This repository uses Yarn workspaces from the root `package.json`.
 
 ## Prisma (services with schema)
 
-For each service below, run:
-
-1. `npx prisma generate`
-2. `npx prisma validate --schema=prisma/schema.prisma`
+Run `yarn prisma:check` from the repository root. It discovers each schema,
+including the booking schema under `src/database/prisma`, and runs generate
+and validate with the explicit schema path.
 
 Services:
 

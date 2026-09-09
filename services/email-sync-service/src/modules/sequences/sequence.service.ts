@@ -11,6 +11,9 @@ type SequenceStep = {
 };
 
 const ACTIVE_STATUSES = ["active", "paused"] as const;
+type StopCondition =
+  | { shouldStop: true; status: "replied" | "unsubscribed" | "cancelled" | "bounced"; reason: string }
+  | { shouldStop: false; status: "active"; reason: string };
 
 export class SequenceService {
   constructor(
@@ -507,7 +510,7 @@ export class SequenceService {
     return template.replace(/{{\s*(firstName|lastName|companyName|email|dealName)\s*}}/g, (_, key: string) => vars[key] || "");
   }
 
-  private async resolveStopCondition(orgId: string, enrollmentId: string) {
+  private async resolveStopCondition(orgId: string, enrollmentId: string): Promise<StopCondition> {
     const db = this.deps.db ?? prisma;
     const enrollment = await db.sequenceEnrollment.findUnique({ where: { id: enrollmentId } });
     if (!enrollment) return { shouldStop: true, status: "cancelled" as const, reason: "Enrollment not found" };

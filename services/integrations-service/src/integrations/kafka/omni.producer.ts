@@ -1,4 +1,4 @@
-import { connectKafkaProducerWithRetry, publishJson } from "@mymanager/node-service-kit";
+import { connectKafkaProducerWithRetry, publishKafkaJson } from "@mymanager/node-service-kit";
 import { config } from "../../config/index.js";
 import { OmniMessageReceivedEvent } from "../../modules/integrations/index.js";
 
@@ -19,7 +19,7 @@ export async function startOmniProducer(logger: any) {
 export async function emitOmniMessageReceived(event: OmniMessageReceivedEvent, logger: any) {
   try {
     const prod = await startOmniProducer(logger);
-    await publishJson(prod, "omni.message.received", event, event.organizationId);
+    await publishKafkaJson(prod, "omni.message.received", event, event.organizationId);
     logger.info({ event }, "Emitted omni.message.received event");
   } catch (err) {
     logger.error({ err, event }, "Failed to emit omni.message.received event");

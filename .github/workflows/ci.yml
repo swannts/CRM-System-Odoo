@@ -23,6 +23,10 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Build frontend (includes TS checks)
         run: yarn workspace micro-app build
+      - name: Frontend typecheck
+        run: yarn workspace micro-app typecheck
+      - name: Frontend lint
+        run: yarn workspace micro-app lint
 
   backend-build:
     name: Backend Build (${{ matrix.service }})
@@ -81,26 +85,17 @@ jobs:
       - name: Generate Prisma clients for schema services
         run: |
           set -euo pipefail
-          for svc in \
-            services/booking-service \
-            services/email-sync-service \
-            services/integrations-service \
-            services/odoo-integration-service \
-            services/organization-service \
-            services/realtime-service
-          do
-            if [ -f "$svc/prisma/schema.prisma" ]; then
-              echo "Generating Prisma for $svc"
-              (cd "$svc" && npx prisma generate)
-            fi
-          done
+          while IFS= read -r schema; do
+            echo "Generating Prisma for $schema"
+            yarn prisma generate --schema="$schema"
+          done < <(find services -path '*/prisma/schema.prisma' -print | sort)
       - name: Validate Prisma schemas
         run: |
           set -euo pipefail
-          for schema in $(find services -path "*/prisma/schema.prisma" | sort); do
+          while IFS= read -r schema; do
             echo "Validating $schema"
-            npx prisma validate --schema="$schema"
-          done
+            yarn prisma validate --schema="$schema"
+          done < <(find services -path '*/prisma/schema.prisma' -print | sort)
 
   docker-smoke-check:
     name: Docker Smoke Build
@@ -110,11 +105,11 @@ jobs:
       - name: Build key service images
         run: |
           set -euo pipefail
-          docker build -f services/api-router-service/docker/Dockerfile.dev -t crm/api-router:ci .
-          docker build -f services/odoo-integration-service/docker/Dockerfile.dev -t crm/odoo-integration:ci .
-          docker build -f services/email-sync-service/docker/Dockerfile.dev -t crm/email-sync:ci .
-          docker build -f services/organization-service/docker/Dockerfile.dev -t crm/organization:ci .
-          docker build -f services/booking-service/docker/Dockerfile.dev -t crm/booking:ci .
+          docker build --build-arg SERVICE_NAME=api-router-service -f services/api-router-service/docker/Dockerfile.dev -t crm/api-router:ci .
+          docker build --build-arg SERVICE_NAME=odoo-integration-service -f services/odoo-integration-service/docker/Dockerfile.dev -t crm/odoo-integration:ci .
+          docker build --build-arg SERVICE_NAME=email-sync-service -f services/email-sync-service/docker/Dockerfile.dev -t crm/email-sync:ci .
+          docker build --build-arg SERVICE_NAME=organization-service -f services/organization-service/docker/Dockerfile.dev -t crm/organization:ci .
+          docker build --build-arg SERVICE_NAME=booking-service -f services/booking-service/docker/Dockerfile.dev -t crm/booking:ci .
 
   runtime-safety-checks:
     name: Runtime Safety Checks

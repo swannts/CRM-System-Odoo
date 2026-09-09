@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useAppDispatch, useAppSelector } from 'src/store/hooks';
 import { fetchLocalCampaigns, selectMarketing } from 'src/store/slices/marketing-slice';
