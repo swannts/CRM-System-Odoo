@@ -762,6 +762,16 @@
             "claim.name": "org_id",
             "jsonType.label": "String"
           }
+        },
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "mymanager-web",
+            "access.token.claim": "true"
+          }
         }
       ],
       "defaultClientScopes": [

@@ -4,8 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.js",
+  "types": "src/index.d.ts",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
   },
   "dependencies": {
     "amqplib": "^0.10.8",
@@ -15,6 +20,7 @@
     "helmet": "^7.1.0",
     "pino": "^9.7.0",
     "pino-http": "^10.5.0",
-    "express-rate-limit": "^7.2.0"
+    "express-rate-limit": "^7.2.0",
+    "jsonwebtoken": "^9.0.2"
   }
 }

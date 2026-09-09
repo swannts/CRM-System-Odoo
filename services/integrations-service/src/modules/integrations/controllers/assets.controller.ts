@@ -130,7 +130,7 @@ export class ImageLibraryController {
 
   async remove(req: AuthenticatedRequest, res: Response) {
     try {
-      const id = req.params.id;
+      const id = String(req.params.id);
       const data = await this.svc.remove(req.identity.orgId, id);
       return res.json({ success: true, data });
     } catch (err: any) {

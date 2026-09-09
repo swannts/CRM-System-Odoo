@@ -1,7 +1,44 @@
+import { createPublicKey } from "node:crypto";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const jwt = require("jsonwebtoken");
+
 const DEFAULT_ORGANIZATION_SERVICE_URL =
   process.env.ORGANIZATION_SERVICE_URL || "http://organization-service:7010";
 
 const DEFAULT_KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || "mymanager-web";
+const JWKS_CACHE_TTL_MS = 5 * 60 * 1000;
+const jwksCache = new Map();
+
+function keycloakIssuer() {
+  return process.env.KEYCLOAK_ISSUER || `${process.env.KEYCLOAK_URL || "http://keycloak:8080"}/realms/${process.env.KEYCLOAK_REALM || "mymanager"}`;
+}
+
+async function signingKey(issuer, kid) {
+  const cached = jwksCache.get(issuer);
+  if (cached && cached.expiresAt > Date.now() && cached.keys[kid]) return cached.keys[kid];
+  const response = await fetch(`${issuer}/protocol/openid-connect/certs`);
+  if (!response.ok) throw new Error(`JWKS request failed (${response.status})`);
+  const body = await response.json();
+  const keys = Object.fromEntries((body.keys || []).filter((key) => key.kid && key.kty === "RSA").map((key) => [key.kid, createPublicKey({ key, format: "jwk" })]));
+  jwksCache.set(issuer, { keys, expiresAt: Date.now() + JWKS_CACHE_TTL_MS });
+  return keys[kid];
+}
+
+export async function verifyAccessToken(authHeader, { issuer = keycloakIssuer(), audience = DEFAULT_KEYCLOAK_CLIENT_ID } = {}) {
+  if (!authHeader?.startsWith("Bearer ")) throw new Error("MISSING_BEARER_TOKEN");
+  const token = authHeader.slice("Bearer ".length).trim();
+  const decoded = jwt.decode(token, { complete: true });
+  if (!decoded?.header?.kid || decoded.header.alg !== "RS256") throw new Error("INVALID_TOKEN_HEADER");
+  const key = await signingKey(issuer, decoded.header.kid);
+  if (!key) throw new Error("UNKNOWN_SIGNING_KEY");
+  const claims = jwt.verify(token, key, { algorithms: ["RS256"], issuer, audience });
+  if (!claims || typeof claims !== "object" || typeof claims.exp !== "number") {
+    throw new Error("TOKEN_EXPIRATION_REQUIRED");
+  }
+  return claims;
+}
 
 export const PLATFORM_ROLES = ["platform_admin"];
 
@@ -66,7 +103,7 @@ export function extractPlatformRolesFromAuthHeader(authHeader, clientId = DEFAUL
   return extractPlatformRolesFromPayload(decodeJwtPayload(authHeader), clientId);
 }
 
-async function fetchResolvedMembership({
+export async function fetchResolvedMembership({
   organizationServiceUrl,
   orgId,
   userId,
@@ -76,7 +113,6 @@ async function fetchResolvedMembership({
     method: "GET",
     headers: {
       "X-Org-Id": orgId,
-      "X-User-Id": userId,
       ...(authorization ? { Authorization: authorization } : {}),
     },
   });
@@ -94,18 +130,40 @@ async function fetchResolvedMembership({
   return json?.data ?? null;
 }
 
+export async function requireOrganizationMembership({
+  organizationServiceUrl = DEFAULT_ORGANIZATION_SERVICE_URL,
+  orgId,
+  userId,
+  authorization,
+}) {
+  const membership = await fetchResolvedMembership({
+    organizationServiceUrl,
+    orgId,
+    userId,
+    authorization,
+  });
+
+  if (
+    !membership ||
+    membership.status === "disabled" ||
+    membership.metadata?.status === "disabled" ||
+    membership.metadata?.active === false
+  ) return null;
+  return membership;
+}
+
 export function createRoleContextMiddleware({
   organizationServiceUrl = DEFAULT_ORGANIZATION_SERVICE_URL,
   clientId = DEFAULT_KEYCLOAK_CLIENT_ID,
 } = {}) {
   return async function roleContextMiddleware(req, res, next) {
-    if (!req.identity?.orgId || !req.identity?.userId) {
-      return res.status(401).json({ message: "Missing identity context headers." });
+    if (!req.identity?.orgId || !req.identity?.userId || !req.identity?.token) {
+      return res.status(401).json({ message: "Missing verified identity context." });
     }
 
     try {
       const authorization = req.header("Authorization") || null;
-      const platformRoles = extractPlatformRolesFromAuthHeader(authorization, clientId);
+      const platformRoles = req.identity.platformRoles || extractPlatformRolesFromPayload(req.identity.token, clientId);
       const platformRole = getHighestPriorityRole(platformRoles);
       const membership = await fetchResolvedMembership({
         organizationServiceUrl,

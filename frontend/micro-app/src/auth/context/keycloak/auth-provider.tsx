@@ -10,6 +10,7 @@ import { useSetState } from 'src/hooks/use-set-state';
 import { CONFIG } from 'src/config-global';
 
 import { AuthContext } from '../auth-context';
+import { socketClient } from 'src/utils/socket';
 import {
   toCurrentRoles,
   getHighestPriorityRole,
@@ -53,11 +54,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const fetchMembership = useCallback(async (accessToken?: string | null) => {
     if (typeof window === 'undefined' || !accessToken) return null;
     try {
-      let userId: string | null = null;
       let orgId: string | null = null;
       try {
         const payload = JSON.parse(atob(accessToken.split('.')[1] || ''));
-        userId = payload?.sub || null;
         orgId = payload?.org_id || null;
       } catch {
         // Best-effort token parse only.
@@ -66,7 +65,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await fetch(`${CONFIG.site.serverUrl}/org/v1/memberships/me`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          ...(userId ? { 'X-User-Id': userId } : {}),
           ...(orgId ? { 'X-Org-Id': orgId } : {}),
         },
         cache: 'no-store',
@@ -122,6 +120,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       sessionStorage.setItem(USER_ID_KEY, user.id || '');
       sessionStorage.setItem(ORG_ROLE_KEY, user.orgRole || '');
       sessionStorage.setItem(PLATFORM_ROLE_KEY, user.platformRole || '');
+      window.dispatchEvent(new CustomEvent('auth-token-refreshed', {
+        detail: { token: keycloak.token || '', orgId: user.org_id || '' },
+      }));
 
       setState({ user, loading: false });
 
@@ -300,6 +301,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
           // Clear local storage/state
           clearSession();
+          socketClient.disconnect();
           setState({ user: null, loading: false });
 
           // Reset refs

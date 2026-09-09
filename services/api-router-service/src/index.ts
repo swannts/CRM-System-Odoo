@@ -1,4 +1,9 @@
-import { createServiceApp, createRateLimiter } from "@mymanager/node-service-kit";
+import {
+  createServiceApp,
+  createRateLimiter,
+  requireOrganizationMembership,
+  verifyAccessToken,
+} from "@mymanager/node-service-kit";
 import { API_ROUTER_CONFIG } from "./config.js";
 
 const authRateLimiter = createRateLimiter({
@@ -18,14 +23,32 @@ app.use("/api/auth/sign-in", authRateLimiter);
 
 import type { Request, Response } from "express";
 
-function identityOr401(req: Request, res: Response): { orgId: string; userId: string } | null {
+async function identityOr401(req: Request, res: Response): Promise<{ orgId: string; userId: string; token: Record<string, any> } | null> {
   const orgId = req.header("X-Org-Id") || null;
-  const userId = req.header("X-User-Id") || null;
-  if (!orgId || !userId) {
-    res.status(401).json({ message: "Missing identity context headers." });
+  if (!orgId) {
+    res.status(401).json({ message: "Missing selected organization." });
     return null;
   }
-  return { orgId, userId };
+  try {
+    const token = await verifyAccessToken(req.header("Authorization"), {
+      issuer: process.env.KEYCLOAK_ISSUER,
+      audience: process.env.KEYCLOAK_CLIENT_ID || "mymanager-web",
+    });
+    if (typeof token.sub !== "string") throw new Error("Token has no subject");
+    const membership = await requireOrganizationMembership({
+      orgId,
+      userId: token.sub,
+      authorization: req.header("Authorization"),
+    });
+    if (!membership) {
+      res.status(403).json({ message: "User is not an active member of this organization." });
+      return null;
+    }
+    return { orgId, userId: token.sub, token };
+  } catch {
+    res.status(401).json({ message: "Invalid or expired access token." });
+    return null;
+  }
 }
 
 function notImplemented(res: Response, meta: { module: string; path: string; method: string; hint: string }) {
@@ -38,10 +61,12 @@ async function proxyTo(req: Request, res: Response, opts: { baseUrl: string; tar
 
     const headers = new Headers();
     const hopByHop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host"]);
+    const callerIdentityHeaders = new Set(["x-user-id", "x-user-role", "x-user-email", "x-user-name"]);
 
     for (const [k, v] of Object.entries(req.headers)) {
       if (!k) continue;
       if (hopByHop.has(k.toLowerCase())) continue;
+      if (callerIdentityHeaders.has(k.toLowerCase())) continue;
       headers.set(k, Array.isArray(v) ? v.join(",") : String(v));
     }
 
@@ -122,7 +147,6 @@ async function getCompatEmployeesFromOdoo(req: Request): Promise<CompatEmployeeR
   const headers = {
     Authorization: req.header("Authorization") ?? "",
     "X-Org-Id": req.header("X-Org-Id") ?? "",
-    "X-User-Id": req.header("X-User-Id") ?? "",
   };
 
   let page = 1;
@@ -165,7 +189,6 @@ function getForwardHeaders(req: Request) {
   return {
     Authorization: req.header("Authorization") ?? "",
     "X-Org-Id": req.header("X-Org-Id") ?? "",
-    "X-User-Id": req.header("X-User-Id") ?? "",
   };
 }
 
@@ -370,22 +393,16 @@ async function handleApiCompat(req: Request, res: Response) {
     }
 
     if (req.method === "GET" && rest === "/me") {
-      const userId = req.header("X-User-Id") || "";
-      const orgId = req.header("X-Org-Id") || "";
-      if (!userId || !orgId) {
-        return res.status(501).json({
-          message: "Authenticated identity headers are required for /auth/me",
-          requiredHeaders: ["X-User-Id", "X-Org-Id"],
-        });
-      }
+      const ident = await identityOr401(req, res);
+      if (!ident) return;
 
       return res.json({
         user: {
-          id: userId,
-          orgId,
-          email: req.header("X-User-Email") || null,
-          name: req.header("X-User-Name") || null,
-          role: req.header("X-User-Role") || null,
+          id: ident.userId,
+          orgId: ident.orgId,
+          email: typeof ident.token.email === "string" ? ident.token.email : null,
+          name: typeof ident.token.name === "string" ? ident.token.name : null,
+          role: null,
         },
       });
     }
@@ -398,7 +415,7 @@ async function handleApiCompat(req: Request, res: Response) {
     });
   }
 
-  const ident = identityOr401(req, res);
+  const ident = await identityOr401(req, res);
   if (!ident) return;
 
   try {

@@ -4,12 +4,18 @@ const SOCKET_URL = process.env.NEXT_PUBLIC_REALTIME_URL || 'http://localhost:703
 
 class SocketClient {
   private socket: Socket | null = null;
+  private token = '';
+  private orgId = '';
 
   connect(token: string, orgId: string) {
-    if (this.socket?.connected) return this.socket;
+    if (this.socket?.connected && this.token === token && this.orgId === orgId) return this.socket;
+    if (this.socket && (this.token !== token || this.orgId !== orgId)) this.disconnect();
+
+    this.token = token;
+    this.orgId = orgId;
 
     this.socket = io(SOCKET_URL, {
-      auth: { token },
+      auth: { token, orgId },
       transports: ['websocket'],
     });
 
@@ -34,6 +40,8 @@ class SocketClient {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.token = '';
+    this.orgId = '';
   }
 }
 

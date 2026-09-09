@@ -1,23 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { extractPlatformRolesFromAuthHeader, getHighestPriorityRole } from '@mymanager/node-service-kit';
+import { requireIdentityContext } from '@mymanager/node-service-kit';
 import { AuthenticatedRequest } from '../interfaces/authenticated-request.js';
 
 export function identityMiddleware(req: AuthenticatedRequest | Request, res: Response, next: NextFunction) {
-  const orgId = req.header('X-Org-Id');
-  const userId = req.header('X-User-Id');
-  const authorization = req.header('Authorization');
-
-  if (!orgId || !userId) {
-    return res.status(401).json({ message: 'Missing identity context headers (X-Org-Id, X-User-Id).' });
-  }
-
-  const platformRoles = extractPlatformRolesFromAuthHeader(authorization);
-
-  (req as any).identity = {
-    orgId,
-    userId,
-    platformRoles,
-    platformRole: getHighestPriorityRole(platformRoles),
-  };
-  next();
+  // The organization service is the membership authority. It must verify the
+  // token first, then resolve membership locally without calling itself.
+  return requireIdentityContext(req, res, next, { validateMembership: false });
 }

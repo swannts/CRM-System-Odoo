@@ -723,38 +723,11 @@ export class MembershipService {
   private keycloakAdmin = new KeycloakAdminService();
 
   async resolveMembership(orgId: string, userId: string) {
-    const org = await this.orgRepo.findById(orgId);
-    if (!org) {
-      await this.orgRepo.create({
-        id: orgId,
-        name: 'Organization',
-        slug: null,
-        metadata: {},
-      });
-    }
-
-    const existing = await this.membershipRepo.findByUser(orgId, userId);
-    if (existing) {
-      return existing;
-    }
-
-    const membershipCount = await this.orgRepo.countMemberships(orgId);
-    if (membershipCount === 0) {
-      return this.membershipRepo.create({
-        organizationId: orgId,
-        userId,
-        role: 'org_owner',
-        permissions: DEFAULT_ROLE_PERMISSIONS.org_owner,
-        metadata: { bootstrapped: true },
-      });
-    }
-    return this.membershipRepo.create({
-      organizationId: orgId,
-      userId,
-      role: 'org_staff',
-      permissions: DEFAULT_ROLE_PERMISSIONS.org_staff,
-      metadata: { autoProvisioned: true },
-    });
+    // Lookup is deliberately side-effect free. Organization creation and
+    // initial-owner provisioning belong to the explicit onboarding workflow;
+    // an arbitrary authenticated caller must never bootstrap access by merely
+    // selecting an organization ID.
+    return this.membershipRepo.findByUser(orgId, userId);
   }
 
   getCatalog() {
