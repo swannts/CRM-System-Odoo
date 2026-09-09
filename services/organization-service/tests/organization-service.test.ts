@@ -1,6 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { app } from '../src/app.js';
+import { createApp } from '../src/app.js';
+
+const { app } = createApp();
 
 describe('Organization Service - Unit & API Tests', () => {
   test('header parsing helper for X-Org-Id & X-User-Id', () => {
@@ -19,28 +21,16 @@ describe('Organization Service - Unit & API Tests', () => {
   });
 
   test('GET /health endpoint response', async () => {
-    const req: any = { method: 'GET', url: '/health', headers: {} };
-    let responseData: any = null;
-    let statusCode = 200;
-
-    const res: any = {
-      status(code: number) {
-        statusCode = code;
-        return this;
-      },
-      json(data: any) {
-        responseData = data;
-        return this;
-      },
-    };
-
-    await new Promise<void>((resolve) => {
-      app(req, res, () => resolve());
-      if (responseData) resolve();
+    const server = await new Promise<any>((resolve) => {
+      const instance = app.listen(0, () => resolve(instance));
     });
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/health`);
+    const responseData = await response.json();
+    await new Promise<void>((resolve, reject) => server.close((error: Error | undefined) => error ? reject(error) : resolve()));
 
-    assert.equal(statusCode, 200);
-    assert.equal(responseData?.status, 'healthy');
-    assert.equal(responseData?.service, 'organization-service');
+    assert.equal(response.status, 200);
+    assert.equal(responseData?.status, 'ok');
+    assert.equal(responseData?.service, 'organization-service (TS)');
   });
 });
