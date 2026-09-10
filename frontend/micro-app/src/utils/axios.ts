@@ -52,7 +52,7 @@ axiosInstance.interceptors.request.use(
       const payload = decodeJwtPayload(accessToken);
       if (payload) {
         const userId = payload.sub || payload.userId || payload.user_id || payload.id;
-        const orgId = payload.org_id || payload.orgId || payload.organizationId || payload.organization_id;
+        const orgId = config.headers['X-Org-Id'] || sessionStorage.getItem('organizationId') || payload.org_id || payload.orgId || payload.organizationId || payload.organization_id;
 
         if (userId) {
           config.headers['X-User-Id'] = userId;

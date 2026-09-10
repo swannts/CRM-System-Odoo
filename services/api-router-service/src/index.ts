@@ -1,3 +1,4 @@
+import { collectPages } from './pagination.js';
 import {
   createServiceApp,
   createRateLimiter,
@@ -61,12 +62,14 @@ async function proxyTo(req: Request, res: Response, opts: { baseUrl: string; tar
 
     const headers = new Headers();
     const hopByHop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host"]);
-    const callerIdentityHeaders = new Set(["x-user-id", "x-user-role", "x-user-email", "x-user-name"]);
+    const callerIdentityHeaders = new Set(["x-user-id", "x-user-role", "x-user-roles", "x-user-email", "x-user-name"]);
 
     for (const [k, v] of Object.entries(req.headers)) {
       if (!k) continue;
       if (hopByHop.has(k.toLowerCase())) continue;
       if (callerIdentityHeaders.has(k.toLowerCase())) continue;
+      // fetch must calculate length from the serialized or transformed body.
+      if (k.toLowerCase() === "content-length") continue;
       headers.set(k, Array.isArray(v) ? v.join(",") : String(v));
     }
 
@@ -220,6 +223,20 @@ async function fetchUpstreamJson(req: Request, url: string, timeoutMs: number = 
   }
 }
 
+async function fetchCollection(req: Request, source: string) {
+  return collectPages(async (page, pageSize) => {
+    const url = new URL(source);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("pageSize", String(pageSize));
+    return fetchUpstreamJson(req, url.toString());
+  });
+}
+
+async function fetchCollectionSafe(req: Request, source: string) {
+  try { return { ok: true, data: { data: await fetchCollection(req, source) }, error: null as string | null }; }
+  catch (error: any) { return { ok: false, data: { data: [] as any[] }, error: String(error?.message || 'Collection unavailable') }; }
+}
+
 async function fetchUpstreamJsonSafe(req: Request, url: string) {
   try {
     const data = await fetchUpstreamJson(req, url);
@@ -255,7 +272,7 @@ async function odooWriteInvoice(req: Request, invoiceId: number, payload: Record
 async function fetchAllOdooInvoicesForGraph(req: Request, opts?: { months?: number; maxPages?: number }) {
   const months = Math.max(1, Math.min(24, Number(opts?.months ?? 6)));
   const maxPages = Math.max(1, Math.min(50, Number(opts?.maxPages ?? 20)));
-  const pageSize = 200;
+  const pageSize = 100;
   const rows: any[] = [];
 
   for (let page = 1; page <= maxPages; page += 1) {
@@ -264,11 +281,12 @@ async function fetchAllOdooInvoicesForGraph(req: Request, opts?: { months?: numb
       pageSize: String(pageSize),
     });
     const upstream = await fetchUpstreamJsonSafe(req, toAbsoluteUrl(API_ROUTER_CONFIG.odooIntegrationBaseUrl, `/v1/odoo/invoices?${query.toString()}`));
-    if (!upstream.ok) break;
+    if (!upstream.ok) throw new Error(upstream.error || "Invoice source unavailable");
 
     const batch = Array.isArray(upstream.data?.data) ? upstream.data.data : [];
     rows.push(...batch);
-    if (batch.length < pageSize) break;
+    if (rows.length >= Number(upstream.data?.total ?? 0)) break;
+    if (!batch.length || page === maxPages) throw new Error("Invoice graph would be incomplete; narrow the date range");
   }
 
   const startDate = new Date();
@@ -413,6 +431,19 @@ async function handleApiCompat(req: Request, res: Response) {
       baseUrl: API_ROUTER_CONFIG.realtimeServiceBaseUrl,
       targetPath: `/v1/inbox${rest}`
     });
+  }
+
+  // Only these booking operations are public; management remains authenticated.
+  if (module === "booking") {
+    if (req.method === "GET" && /^\/public\/booking-types\/[^/]+$/.test(rest)) {
+      return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.bookingServiceBaseUrl, targetPath: `/v1/booking-types/${encodeURIComponent(rest.split('/')[3])}` });
+    }
+    if (req.method === "GET" && rest === "/available-slots") {
+      return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.bookingServiceBaseUrl, targetPath: withQuery(req, "/v1/appointments/available-slots") });
+    }
+    if (req.method === "POST" && rest === "/appointments/user") {
+      return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.bookingServiceBaseUrl, targetPath: "/v1/appointments/public" });
+    }
   }
 
   const ident = await identityOr401(req, res);
@@ -1063,6 +1094,13 @@ async function handleApiCompat(req: Request, res: Response) {
     }
 
     if (module === "booking") {
+      if (["PATCH", "DELETE"].includes(req.method) && /^\/booking-types\/[^/]+$/.test(rest)) {
+        return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.bookingServiceBaseUrl, targetPath: `/v1${rest}` });
+      }
+      if (req.method === "PATCH" && /^\/appointments\/[^/]+$/.test(rest)) {
+        return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.bookingServiceBaseUrl, targetPath: `/v1${rest}` });
+      }
+
       if (req.method === "GET" && rest === "/booking-types") return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.bookingServiceBaseUrl, targetPath: "/v1/booking-types" });
       if (req.method === "GET" && /^\/booking-types\/[^/]+$/.test(rest)) {
         const bookingTypeIdOrLink = rest.split("/")[2];
@@ -1624,7 +1662,7 @@ async function handleApiCompat(req: Request, res: Response) {
 
       if (req.method === "PATCH" && /^\/opportunities\/[^/]+$/.test(rest)) {
         const id = rest.split("/")[2];
-        return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.odooIntegrationBaseUrl, targetPath: `/v1/odoo/crm/${id}` });
+        return proxyTo(req, res, { baseUrl: API_ROUTER_CONFIG.odooIntegrationBaseUrl, targetPath: `/v1/odoo/crm/${id}`, method: "PUT" });
       }
 
       if (req.method === "DELETE" && /^\/opportunities\/[^/]+$/.test(rest)) {
@@ -1760,14 +1798,17 @@ async function handleApiCompat(req: Request, res: Response) {
 
       if (req.method === "GET" && rest === "/overview") {
         const [billingSummaryRes, contactsAnalyticsRes, magentoRes, odooRes, crmRes, bookingsRes] = await Promise.all([
-          fetchUpstreamJsonSafe(req, toAbsoluteUrl(API_ROUTER_CONFIG.odooIntegrationBaseUrl, "/v1/odoo/invoices?page=1&pageSize=200")),
+          fetchCollectionSafe(req, toAbsoluteUrl(API_ROUTER_CONFIG.odooIntegrationBaseUrl, "/v1/odoo/invoices")),
           fetchUpstreamJsonSafe(req, contactsAnalyticsUrl),
           fetchMagentoOrders(req, new URLSearchParams({ pageSize: "100", currentPage: "1" })),
-          fetchUpstreamJsonSafe(req, odooOrdersUrl),
-          fetchUpstreamJsonSafe(req, odooCrmUrl),
+          fetchCollectionSafe(req, odooOrdersUrl),
+          fetchCollectionSafe(req, odooCrmUrl),
           fetchUpstreamJsonSafe(req, bookingsUrl),
         ]);
 
+        if (![billingSummaryRes, contactsAnalyticsRes, odooRes, crmRes, bookingsRes].every(source => source.ok)) {
+          return res.status(503).json({ message: "Dashboard sources are unavailable. Please retry." });
+        }
         const invoices = Array.isArray(billingSummaryRes.data?.data) ? billingSummaryRes.data.data : [];
         const contactsAnalytics = contactsAnalyticsRes.data ?? {};
         const magentoItems = Array.isArray(magentoRes.data?.data?.items) ? magentoRes.data.data.items : [];
@@ -1787,8 +1828,8 @@ async function handleApiCompat(req: Request, res: Response) {
             range,
             kpis: {
               contactsTotal: Number(contactsAnalytics?.totalContacts ?? 0),
-              leadsTotal: crmItems.filter((lead: any) => Number(lead?.probability ?? 0) >= 70).length,
-              opportunitiesTotal: crmItems.length,
+              leadsTotal: crmItems.filter((lead: any) => lead.type === "lead").length,
+              opportunitiesTotal: crmItems.filter((lead: any) => lead.type === "opportunity").length,
               revenueTotal: Number(totals.totalInvoiced ?? totalRevenue),
               outstandingTotal: Number(totals.totalOutstanding ?? 0),
               orderCount: magentoItems.length + odooItems.length,
@@ -1859,7 +1900,7 @@ async function handleApiCompat(req: Request, res: Response) {
         if (metric === "orders") {
           const [magentoRes, odooRes] = await Promise.all([
             fetchMagentoOrders(req, new URLSearchParams({ pageSize: "100", currentPage: "1" })),
-            fetchUpstreamJsonSafe(req, odooOrdersUrl),
+            fetchCollectionSafe(req, odooOrdersUrl),
           ]);
           const magentoItems = Array.isArray(magentoRes.data?.data?.items) ? magentoRes.data.data.items : [];
           const odooItems = Array.isArray(odooRes.data?.data) ? odooRes.data.data : [];
@@ -1878,7 +1919,7 @@ async function handleApiCompat(req: Request, res: Response) {
         }
 
         if (metric === "pipeline") {
-          const crmRes = await fetchUpstreamJsonSafe(req, odooCrmUrl);
+          const crmRes = await fetchCollectionSafe(req, odooCrmUrl);
           const crmItems = Array.isArray(crmRes.data?.data) ? crmRes.data.data : [];
           const bucket = new Map<string, number>();
           crmItems.forEach((lead: any) => {
@@ -1947,8 +1988,8 @@ async function handleApiCompat(req: Request, res: Response) {
 
       if (req.method === "GET" && rest === "/attention") {
         const [billingSummaryRes, reconciliationRes, bookingsRes] = await Promise.all([
-          fetchUpstreamJsonSafe(req, toAbsoluteUrl(API_ROUTER_CONFIG.odooIntegrationBaseUrl, "/v1/odoo/invoices?page=1&pageSize=200")),
-          fetchUpstreamJsonSafe(req, toAbsoluteUrl(API_ROUTER_CONFIG.odooIntegrationBaseUrl, "/v1/odoo/invoices?page=1&pageSize=200")),
+          fetchCollectionSafe(req, toAbsoluteUrl(API_ROUTER_CONFIG.odooIntegrationBaseUrl, "/v1/odoo/invoices")),
+          fetchCollectionSafe(req, toAbsoluteUrl(API_ROUTER_CONFIG.odooIntegrationBaseUrl, "/v1/odoo/invoices")),
           fetchUpstreamJsonSafe(req, bookingsUrl),
         ]);
         const invoices = Array.isArray(billingSummaryRes.data?.data) ? billingSummaryRes.data.data : [];

@@ -1,3 +1,4 @@
+import { requireIdentityContext } from '@mymanager/node-service-kit';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -28,6 +29,20 @@ async function bootstrap() {
       } 
     }
   }));
+
+  app.use((req: any, res: any, next: () => void) => {
+    const path = req.path.replace(/\/$/, '');
+    const publicRoute = (req.method === 'POST' && path === '/v1/appointments/public') ||
+      (req.method === 'GET' && (path === '/v1/appointments/available-slots' || /^\/v1\/booking-types\/[^/]+$/.test(path)));
+    if (!path.startsWith('/v1/') || publicRoute || req.method === 'OPTIONS') return next();
+    return requireIdentityContext(req, res, () => {
+      if (!['GET', 'HEAD'].includes(req.method) && !['org_owner', 'org_admin', 'org_manager', 'org_staff'].includes(req.identity.orgRole)) {
+        return res.status(403).json({ message: 'Your role cannot change bookings.' });
+      }
+      req.headers['x-org-id'] = req.identity.orgId;
+      next();
+    });
+  });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 

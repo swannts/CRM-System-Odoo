@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "yarn@1.22.22",
   "engines": {
-    "node": ">=20 <25",
+    "node": ">=24 <25",
     "yarn": "1.22.22"
   },
   "workspaces": [
@@ -13,6 +13,7 @@
     "common/*"
   ],
   "scripts": {
+    "test:mvp-core": "node --experimental-strip-types --test services/booking-service/tests/scheduling.test.mjs services/api-router-service/tests/pagination.test.mjs",
     "compose:dev": "./manage.sh dev up",
     "compose:web-test": "./manage.sh test up",
     "compose:prod": "./manage.sh prod up",

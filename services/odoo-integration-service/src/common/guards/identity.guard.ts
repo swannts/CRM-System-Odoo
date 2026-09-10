@@ -3,6 +3,7 @@ import {
   CanActivate,
   ExecutionContext,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { requireOrganizationMembership, verifyAccessToken } from '@mymanager/node-service-kit';
 import { Identity } from '../interfaces/identity.interface.js';
@@ -36,6 +37,10 @@ export class IdentityGuard implements CanActivate {
     });
     if (!membership) {
       throw new UnauthorizedException('User is not an active member of this organization');
+    }
+
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !['org_owner', 'org_admin', 'org_manager', 'org_staff', 'sales_staff', 'admin_manager'].includes(membership.role)) {
+      throw new ForbiddenException('Your organization role cannot modify these records');
     }
 
     const identity: Identity = {

@@ -1,6 +1,6 @@
 # CRM MVP Progress
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 ## Milestones
 
@@ -130,3 +130,70 @@ Updated: 2026-09-09
 Provision service-account memberships in the organization service, then finish
 live Keycloak login/logout/refresh and invalid-audience coverage. After that,
 complete tenant isolation before advancing to onboarding.
+
+## Feature implementation batch: 2026-09-10
+
+Branch: `codex/mvp-features`, based on `a6c3a75`.
+
+Implemented in source, with integration verification still pending:
+
+- Workspace creation and selection, initial owner membership, invitation creation,
+  expiry, revocation, and verified-email acceptance. Invitation links are manually
+  shareable; no outbound invitation email is sent. New `/workspace-setup/` screen
+  and navigation entry. Workspace selection survives token refresh and is sent
+  through the existing Axios client.
+- Sales opportunity PATCH-to-PUT compatibility, stale proxy Content-Length removal,
+  partial updates that preserve lead type, and explicit active/lost updates.
+- Contact CSV validation with file/row limits, duplicate-email skipping, row-level
+  result reporting, and an actual downloadable CSV template. Excel is not supported.
+- Public booking now displays real available slots and submits guest details.
+  Booking timezone, availability, buffering, public status restrictions, cancellation,
+  and rescheduling checks are implemented. Appointment writes use a PostgreSQL
+  transaction advisory lock per organization before checking overlapping records.
+  A live concurrent PostgreSQL test is still required before claiming this verified.
+- Internal appointment confirmation/completion/cancellation/rescheduling controls refresh the list
+  after writes. Booking-type forms reset when switching records and provide timezone
+  and weekly availability editing.
+- Booking management API update routes and array response normalization repaired.
+  Booking mutations verify membership and role; booking-type updates check ownership.
+- Notifications persist in PostgreSQL and support recipient-scoped list/count/read/
+  seen/archive operations. Payment events and due agent tasks generate idempotent
+  notifications. Kafka handler errors are rethrown rather than acknowledged as success.
+- Dashboard collection reads fetch all pages or fail explicitly; lead/opportunity
+  counts use record type. Overview source outages return an error rather than zeros.
+  Full date-range/currency semantics remain to be completed.
+- Runtime declared as Node 24, matching existing service Dockerfiles. CI now uses
+  Node 24 instead of the Node 20 runtime rejected by Azure Identity dependencies.
+
+Verification performed:
+
+- Six actual scheduling/pagination logic tests pass, including Dhaka timezone,
+  daylight-saving gaps, invalid/past slots, pagination truncation, changing totals,
+  and upstream errors.
+- TypeScript transpilation syntax checks pass for the modified source files. This
+  is NOT a semantic typecheck or a successful application build.
+- Runtime hardcoding check passes; whitespace checks pass.
+- Full dependency installation did not complete in this environment. The online
+  installation was interrupted; offline installation confirms required packages
+  are missing from cache. Full builds, Prisma generation, and live database/auth
+  integration tests remain unverified.
+- `graphify update .` cannot run because the command is not installed.
+
+Database rollout prerequisites (not executed against any live database):
+
+- Existing booking DB: apply `services/booking-service/scripts/add-booking-timezone.sql`.
+- Existing organization DB: apply `services/organization-service/scripts/add-organization-invitations.sql`.
+- Realtime DB: apply the new notification migration using the existing migration procedure.
+- Regenerate each service's Prisma client before compiling/running it.
+- Booking availability defaults to UTC; configure the booking type's IANA timezone
+  explicitly to preserve the intended business schedule.
+
+Still outstanding; do not mark the MVP complete:
+
+- Odoo tenant isolation and provisioning. Newly created workspaces must not be used
+  for real customer data before Odoo isolation is implemented and tested.
+- Full assignment/reminder coverage for CRM activities and booking events (the new
+  reminder worker currently covers realtime agent tasks).
+- Complete date/currency dashboard semantics.
+- Live invitation, booking concurrency, notification persistence, and cross-tenant
+  integration tests; frontend lint/typecheck; production readiness gates.

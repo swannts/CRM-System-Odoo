@@ -49,7 +49,7 @@ export class ContactsController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async import(@UploadedFile() file: Express.Multer.File) {
     return this.contactsService.import(file);
   }

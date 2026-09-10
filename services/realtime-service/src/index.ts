@@ -1,3 +1,4 @@
+import { recordNotification, deliverTaskReminders } from './services/notifications.service.js';
 import http from "node:http";
 import { Server as SocketIOServer } from "socket.io";
 import { createServiceApp, requireOrganizationMembership, startKafkaConsumer, verifyAccessToken } from "@mymanager/node-service-kit";
@@ -11,7 +12,8 @@ import {
   OmniMessageController,
   OmniAIController,
   OmniAgentController,
-  InboxCompatController
+  InboxCompatController,
+  NotificationsController
 } from "./controllers/index.js";
 import { identityMiddleware } from "./middleware/identity.js";
 import { LiveChatChannelRepository } from "./repositories/livechat/channel.repository.js";
@@ -80,13 +82,15 @@ app.post("/v1/inbox/send_text", auth, route(inboxCompatCtrl.sendText.bind(inboxC
 app.post("/v1/inbox/send_image", auth, route(inboxCompatCtrl.sendImage.bind(inboxCompatCtrl)));
 app.all("/v1/inbox/webhook/:uid", route(inboxCompatCtrl.webhook.bind(inboxCompatCtrl)));
 
-// --- Notifications (Dummy) ---
-app.get("/v1/notifications", auth, (req: any, res: any) => res.json({ data: [], total: 0 }));
-app.get("/v1/notifications/total", auth, (req: any, res: any) => res.json({ data: { all: 0, unread: 0, archived: 0, categories: [] } }));
-app.post("/v1/notifications/read", auth, (req: any, res: any) => res.json({ success: true }));
-app.post("/v1/notifications/archive", auth, (req: any, res: any) => res.json({ success: true }));
-app.post("/v1/notifications/unarchive", auth, (req: any, res: any) => res.json({ success: true }));
-app.post("/v1/notifications/mark-seen/:id/:userId", auth, (req: any, res: any) => res.json({ success: true }));
+// Persistent notifications scoped to the verified recipient.
+const notificationsCtrl = new NotificationsController();
+app.get("/v1/notifications", auth, route(notificationsCtrl.list.bind(notificationsCtrl)));
+app.get("/v1/notifications/total", auth, route(notificationsCtrl.total.bind(notificationsCtrl)));
+app.post("/v1/notifications/read", auth, route(notificationsCtrl.read.bind(notificationsCtrl)));
+app.post("/v1/notifications/archive", auth, route(notificationsCtrl.archive.bind(notificationsCtrl)));
+app.post("/v1/notifications/unarchive", auth, route(notificationsCtrl.unarchive.bind(notificationsCtrl)));
+app.post("/v1/notifications/mark-seen/:id", auth, route(notificationsCtrl.markSeen.bind(notificationsCtrl)));
+app.post("/v1/notifications/mark-seen/:id/:userId", auth, route(notificationsCtrl.markSeen.bind(notificationsCtrl)));
 
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
@@ -236,8 +240,18 @@ async function startConsumer() {
         } catch (err) {
           logger.error({ err }, "Failed to process inbound omni message");
         }
-      } else {
-        io.emit("domain-event", { routingKey: topic, data: payload });
+      } else if (topic === "billing.payment.recorded") {
+        const event = payload as any;
+        if (!event?.org_id || !event?.actor_user_id || !event?.payment_id) {
+          logger.warn({ topic }, "Ignoring invalid payment notification event");
+          return;
+        }
+        await recordNotification({
+          orgId: event.org_id, userId: event.actor_user_id,
+          eventId: `payment:${event.payment_id}`, type: "payment", category: "Billing",
+          title: "Payment recorded", body: `Payment recorded for invoice ${event.invoice_id}`,
+        });
+        io.to(`org:${event.org_id}`).emit("domain-event", { routingKey: topic, data: payload });
       }
     },
   });
@@ -248,6 +262,16 @@ app.get("/health", (_req: any, res: any) => res.json({ status: "ok", service: "r
 const port = Number(process.env.PORT || 7030);
 server.listen(port, "0.0.0.0", async () => {
   logger.info({ port }, "realtime-service listening (TS + Socket.IO)");
+  let remindersRunning = false;
+  const reminders = async () => {
+    if (remindersRunning) return;
+    remindersRunning = true;
+    try { await deliverTaskReminders(); }
+    catch (err) { logger.error({ err }, "Task reminders will retry on the next interval"); }
+    finally { remindersRunning = false; }
+  };
+  void reminders();
+  setInterval(() => void reminders(), 60_000).unref();
   try {
     await startConsumer();
   } catch (err) {

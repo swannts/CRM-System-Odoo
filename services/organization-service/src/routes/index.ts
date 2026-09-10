@@ -1,3 +1,4 @@
+import { registerWorkspaceOnboarding } from '../modules/organization/controllers/workspace-onboarding.controller.js';
 import type { Express } from "express";
 import {
   OrganizationController,
@@ -27,6 +28,8 @@ export function registerRoutes(app: Express) {
   const automationCompatCtrl = new AutomationCompatController();
 
   const ownerOrAdmin = requireOrgRoles(["org_owner", "org_admin"]) as any;
+  registerWorkspaceOnboarding(app, auth, ownerOrAdmin);
+
   const ownerOnly = requireOrgRoles(["org_owner"]) as any;
   const managerUp = requireOrgRoles(["org_owner", "org_admin", "org_manager"]) as any;
 

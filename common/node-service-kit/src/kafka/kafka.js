@@ -125,9 +125,11 @@ export async function startKafkaConsumer({
         });
       } catch (err) {
         logger?.error?.(
-          { err, topic, partition, rawValue },
+          { err, topic: receivedTopic, partition },
           "Kafka consumer failed to process message"
         );
+        // Do not acknowledge failed writes; Kafka retries the uncommitted offset.
+        throw err;
       }
     },
   });

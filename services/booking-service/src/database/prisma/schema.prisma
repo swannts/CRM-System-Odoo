@@ -15,6 +15,7 @@ model BookingType {
   description     String?
   durationMinutes Int            @default(30)
   bufferMinutes   Int            @default(0)
+  timeZone        String         @default("UTC")
   color           String?        @default("#2196f3")
   price           Decimal?       @db.Decimal(10, 2)
   isActive        Boolean        @default(true)
@@ -41,6 +42,8 @@ model Appointment {
   startTime     DateTime
   endTime       DateTime
   status        String      @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
+  guestName     String?
+  guestEmail    String?
   notes         String?
   odooEventId   Int? // ID of calendar.event in Odoo
   createdAt     DateTime    @default(now())
