@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
+import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -26,14 +27,16 @@ type Props = {
 export default function ContactImportDialog({ open, onClose, onRefresh }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<{ row: number; name: string; success: boolean; skipped?: boolean; error?: string }[]>([]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv') || droppedFile.name.endsWith('.xlsx'))) {
+    if (droppedFile && (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv'))) {
       setFile(droppedFile);
+      setResults([]);
     } else {
-      showToast({ message: 'Please upload a CSV or Excel file', severity: 'error' });
+      showToast({ message: 'Please upload a CSV file', severity: 'error' });
     }
   }, []);
 
@@ -41,6 +44,7 @@ export default function ContactImportDialog({ open, onClose, onRefresh }: Props)
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
+      setResults([]);
     }
   };
 
@@ -52,11 +56,10 @@ export default function ContactImportDialog({ open, onClose, onRefresh }: Props)
       const formData = new FormData();
       formData.append('file', file);
       
-      await contactService.importContacts(formData);
-      
-      showToast({ message: 'Import successful!', severity: 'success' });
+      const imported = await contactService.importContacts(formData);
+      if (!Array.isArray(imported)) throw new Error('Invalid import response');
+      setResults(imported);
       onRefresh();
-      onClose();
       setFile(null);
     } catch (error) {
       showToast({ message: 'Import failed. Please check the file format.', severity: 'error' });
@@ -77,8 +80,8 @@ export default function ContactImportDialog({ open, onClose, onRefresh }: Props)
       <DialogContent dividers>
         <Stack spacing={3} sx={{ py: 2 }}>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Upload a CSV or Excel file containing your contact list. 
-            Ensure your file has headers like: Name, Email, Phone, Company.
+            Upload a CSV file containing your contact list.
+            Ensure your file has headers like: Name, Email, Phone, IsCompany. Existing email addresses are skipped. Maximum 5 MB and 5,000 rows.
           </Typography>
 
           <Box
@@ -100,7 +103,7 @@ export default function ContactImportDialog({ open, onClose, onRefresh }: Props)
             }}
             component="label"
           >
-            <input type="file" hidden accept=".csv, .xlsx" onChange={handleFileSelect} />
+            <input type="file" hidden accept=".csv" onChange={handleFileSelect} />
             
             <Stack spacing={2} alignItems="center" justifyContent="center">
               <Iconify icon="solar:cloud-upload-bold-duotone" width={64} sx={{ color: 'primary.main' }} />
@@ -116,6 +119,14 @@ export default function ContactImportDialog({ open, onClose, onRefresh }: Props)
             </Stack>
           </Box>
 
+          {results.length > 0 && <Stack spacing={1} role="status">
+            <Alert severity={results.some(row => !row.success) ? 'warning' : 'success'}>
+              {results.filter(row => row.success).length} imported; {results.filter(row => row.skipped).length} skipped; {results.filter(row => !row.success && !row.skipped).length} failed.
+            </Alert>
+            <Box sx={{ maxHeight: 240, overflow: 'auto' }}>
+              {results.filter(row => !row.success).map(row => <Typography key={row.row} variant="body2">Row {row.row}: {row.name || 'Missing name'}: {row.error}</Typography>)}
+            </Box>
+          </Stack>}
           {file && (
             <Stack direction="row" alignItems="center" spacing={2} sx={{ p: 2, borderRadius: 1, bgcolor: 'background.neutral' }}>
                <Iconify icon="solar:file-text-bold" width={32} sx={{ color: 'primary.main' }} />
@@ -136,8 +147,10 @@ export default function ContactImportDialog({ open, onClose, onRefresh }: Props)
             color="primary" 
             startIcon={<Iconify icon="solar:download-bold" />}
             onClick={() => {
-              // Trigger template download
-              showToast({ message: 'Template download starting...', severity: 'info' });
+              const url = URL.createObjectURL(new Blob(['Name,Email,Phone,IsCompany\nExample Contact,contact@example.test,+8801700000000,false\n'], { type: 'text/csv;charset=utf-8' }));
+              const anchor = document.createElement('a');
+              anchor.href = url; anchor.download = 'contacts-template.csv'; anchor.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
             }}
           >
             Download Template

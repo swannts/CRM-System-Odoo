@@ -32,13 +32,13 @@ export class BookingTypesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a booking type' })
-  update(@Param('id') id: string, @Body() updateBookingTypeDto: UpdateBookingTypeDto) {
-    return this.bookingTypesService.update(id, updateBookingTypeDto);
+  update(@Headers('X-Org-Id') orgId: string, @Param('id') id: string, @Body() updateBookingTypeDto: UpdateBookingTypeDto) {
+    return this.bookingTypesService.update(orgId, id, updateBookingTypeDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a booking type' })
-  remove(@Param('id') id: string) {
-    return this.bookingTypesService.remove(id);
+  remove(@Headers('X-Org-Id') orgId: string, @Param('id') id: string) {
+    return this.bookingTypesService.remove(orgId, id);
   }
 }

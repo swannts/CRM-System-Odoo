@@ -212,6 +212,8 @@ export class OdooClientService {
         return Number(left ?? 0) <= Number(right ?? 0);
       case 'in':
         return Array.isArray(rawValue) ? rawValue.includes(left) : false;
+      case '=ilike':
+        return String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase();
       case 'ilike': {
         const leftText = String(left ?? '').toLowerCase();
         const pattern = String(right ?? '')

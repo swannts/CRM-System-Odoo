@@ -1,14 +1,20 @@
+import { OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsTimeZone,
   IsBoolean,
   IsNumber,
+  IsInt,
+  Max,
   IsOptional,
   IsString,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { CreateAvailabilityDto } from '../../availability/dto/create-availability.dto.js';
+
+export class BookingAvailabilityDto extends OmitType(CreateAvailabilityDto, ['bookingTypeId'] as const) {}
 
 export class CreateBookingTypeDto {
   @IsString()
@@ -24,15 +30,21 @@ export class CreateBookingTypeDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(1440)
   durationMinutes?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(0)
+  @Max(1440)
   bufferMinutes?: number;
+
+  @IsOptional()
+  @IsTimeZone()
+  timeZone?: string;
 
   @IsOptional()
   @IsString()
@@ -50,6 +62,6 @@ export class CreateBookingTypeDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateAvailabilityDto)
-  availabilities?: CreateAvailabilityDto[];
+  @Type(() => BookingAvailabilityDto)
+  availabilities?: BookingAvailabilityDto[];
 }

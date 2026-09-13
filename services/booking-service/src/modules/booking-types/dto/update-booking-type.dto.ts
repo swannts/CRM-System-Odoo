@@ -1,14 +1,17 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsTimeZone,
   IsBoolean,
   IsNumber,
+  IsInt,
+  Max,
   IsOptional,
   IsString,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { UpdateAvailabilityDto } from '../../availability/dto/update-availability.dto.js';
+import { BookingAvailabilityDto } from './create-booking-type.dto.js';
 
 export class UpdateBookingTypeDto {
   @IsOptional()
@@ -25,15 +28,21 @@ export class UpdateBookingTypeDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(1440)
   durationMinutes?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(0)
+  @Max(1440)
   bufferMinutes?: number;
+
+  @IsOptional()
+  @IsTimeZone()
+  timeZone?: string;
 
   @IsOptional()
   @IsString()
@@ -51,6 +60,6 @@ export class UpdateBookingTypeDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => UpdateAvailabilityDto)
-  availabilities?: UpdateAvailabilityDto[];
+  @Type(() => BookingAvailabilityDto)
+  availabilities?: BookingAvailabilityDto[];
 }

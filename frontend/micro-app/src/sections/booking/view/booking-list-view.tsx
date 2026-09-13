@@ -150,7 +150,7 @@ export function BookingListView() {
 
         </Grid>
       ) : (
-        <AppointmentsTab appointments={appointments} loading={appointmentsLoading} />
+        <AppointmentsTab appointments={appointments} loading={appointmentsLoading} onRefresh={() => dispatch(fetchAppointments()).unwrap()} />
       )}
 
 

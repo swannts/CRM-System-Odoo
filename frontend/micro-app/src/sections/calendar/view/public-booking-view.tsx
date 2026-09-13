@@ -1,174 +1,75 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAppDispatch, useAppSelector } from 'src/store/hooks';
-import { 
-  selectBooking, 
-  fetchPublicBookingTypeThunk, 
-  fetchAvailableSlotsThunk, 
-  createPublicAppointmentThunk 
-} from 'src/store/slices/booking-slice';
+import { useEffect, useState } from 'react';
+import { Alert, Box, Button, Card, Container, Stack, TextField, Typography } from '@mui/material';
+import { bookingService } from 'src/services/booking-service';
 
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Button from '@mui/material/Button';
-import Avatar from '@mui/material/Avatar';
-import Divider from '@mui/material/Divider';
-import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
-import CircularProgress from '@mui/material/CircularProgress';
+type Slot = { start: string; end: string; label: string };
+type BookingType = { id: string; title: string; description?: string; durationMinutes: number; timeZone?: string };
+type Props = { bookingLink?: string; userId?: string; serviceId?: string };
 
-import { fCurrency } from 'src/utils/format-number';
-import { Iconify } from 'src/components/iconify';
-
-// ----------------------------------------------------------------------
-
-type Props = {
-  bookingLink?: string;
-  userId?: string;
-  serviceId?: string;
-};
-
-export function PublicBookingView({ bookingLink, userId, serviceId }: Props) {
-  const dispatch = useAppDispatch();
-  const { publicBooking } = useAppSelector(selectBooking);
-  const { type: bookingType, loading, slots } = publicBooking;
-
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-
+export function PublicBookingView({ bookingLink, serviceId }: Props) {
+  const [type, setType] = useState<BookingType | null>(null);
+  const [date, setDate] = useState('');
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [start, setStart] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   useEffect(() => {
-    if (bookingLink || serviceId) {
-      dispatch(fetchPublicBookingTypeThunk({ link: bookingLink, id: serviceId }));
-    }
-  }, [dispatch, bookingLink, serviceId]);
-
+    let cancelled = false;
+    setType(null);
+    const id = bookingLink || serviceId;
+    if (!id) { setError('This booking link is incomplete.'); return undefined; }
+    bookingService.getBookingTypeByLink(id)
+      .then(value => { if (!cancelled) setType(value); })
+      .catch(() => { if (!cancelled) setError('This booking link is unavailable.'); });
+    return () => { cancelled = true; };
+  }, [bookingLink, serviceId]);
   useEffect(() => {
-    if (selectedDate && bookingType?.id) {
-      dispatch(fetchAvailableSlotsThunk({ typeId: bookingType.id, date: selectedDate }));
-    }
-  }, [dispatch, selectedDate, bookingType?.id]);
-
-  if (loading && !bookingType) {
-    return (
-      <Box sx={{ py: 15, textAlign: 'center' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ bgcolor: 'background.neutral', minHeight: '100vh', py: { xs: 5, md: 10 } }}>
-      <Container maxWidth="lg">
-        <Grid container spacing={4} justifyContent="center">
-          <Grid item xs={12} md={4}>
-            <Card sx={{ p: 4, height: '100%', position: 'sticky', top: 24 }}>
-              <Stack spacing={3} alignItems="center" sx={{ textAlign: 'center' }}>
-                <Avatar 
-                   sx={{ width: 80, height: 80, fontSize: 32, bgcolor: 'primary.main', color: 'primary.contrastText' }}
-                >
-                   {bookingType?.title?.charAt(0) || 'B'}
-                </Avatar>
-                
-                <Box>
-                   <Typography variant="h4">{bookingType?.title || 'Book Appointment'}</Typography>
-                   <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-                      {bookingType?.description || 'Please select a date and time that works best for you.'}
-                   </Typography>
-                </Box>
-
-                <Divider sx={{ width: '100%', borderStyle: 'dashed' }} />
-
-                <Stack spacing={2} sx={{ width: '100%' }}>
-                   <Stack direction="row" alignItems="center" spacing={1.5}>
-                      <Iconify icon="solar:clock-circle-bold" sx={{ color: 'primary.main' }} />
-                      <Typography variant="subtitle2">{bookingType?.durationMinutes || 30} Minutes</Typography>
-                   </Stack>
-                   <Stack direction="row" alignItems="center" spacing={1.5}>
-                      <Iconify icon="solar:videocamera-record-bold" sx={{ color: 'primary.main' }} />
-                      <Typography variant="subtitle2">Web Conferencing</Typography>
-                   </Stack>
-                   {bookingType?.priceCents > 0 && (
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                         <Iconify icon="solar:tag-bold" sx={{ color: 'primary.main' }} />
-                         <Typography variant="subtitle2">{fCurrency(bookingType.priceCents / 100)}</Typography>
-                      </Stack>
-                   )}
-                </Stack>
-              </Stack>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={8}>
-            <Card sx={{ p: 0, overflow: 'hidden' }}>
-               <Box sx={{ p: 3, borderBottom: (theme) => `1px solid ${theme.palette.divider}`, bgcolor: 'background.neutral' }}>
-                  <Typography variant="h6">Select Date & Time</Typography>
-               </Box>
-
-               <Grid container>
-                  <Grid item xs={12} md={7} sx={{ p: 3, borderRight: (theme) => ({ md: `1px solid ${theme.palette.divider}` }) }}>
-                     <Typography variant="subtitle2" sx={{ mb: 2 }}>Available Dates</Typography>
-                     {/* Simplified Date Grid for Parity Demo */}
-                     <Grid container spacing={1}>
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((day) => (
-                           <Grid item xs={3} key={day}>
-                              <Button 
-                                 fullWidth 
-                                 variant={selectedDate === `2024-05-${day}` ? 'contained' : 'outlined'}
-                                 onClick={() => setSelectedDate(`2024-05-${day}`)}
-                                 sx={{ py: 1.5 }}
-                              >
-                                 {day}
-                              </Button>
-                           </Grid>
-                        ))}
-                     </Grid>
-                  </Grid>
-
-                  <Grid item xs={12} md={5} sx={{ p: 3 }}>
-                     <Typography variant="subtitle2" sx={{ mb: 2 }}>{selectedDate ? `Times for May ${selectedDate.split('-')[2]}` : 'Select a date'}</Typography>
-                     {selectedDate ? (
-                        <Stack spacing={1}>
-                           {['09:00 AM', '10:00 AM', '11:30 AM', '01:00 PM', '02:30 PM', '04:00 PM'].map((time) => (
-                              <Button 
-                                 key={time} 
-                                 fullWidth 
-                                 variant={selectedTime === time ? 'contained' : 'soft'}
-                                 onClick={() => setSelectedTime(time)}
-                                 color={selectedTime === time ? 'primary' : 'inherit'}
-                              >
-                                 {time}
-                              </Button>
-                           ))}
-                        </Stack>
-                     ) : (
-                        <Box sx={{ py: 5, textAlign: 'center', opacity: 0.5 }}>
-                           <Iconify icon="solar:calendar-bold-duotone" width={48} sx={{ mb: 1 }} />
-                           <Typography variant="caption" display="block">Pick a date to see availability</Typography>
-                        </Box>
-                     )}
-                  </Grid>
-               </Grid>
-
-               <Divider />
-
-               <Box sx={{ p: 3, textAlign: 'right' }}>
-                  <Button 
-                     size="large" 
-                     variant="contained" 
-                     disabled={!selectedTime}
-                     endIcon={<Iconify icon="solar:arrow-right-bold" />}
-                     sx={{ px: 4 }}
-                  >
-                     Confirm Booking
-                  </Button>
-               </Box>
-            </Card>
-          </Grid>
-        </Grid>
-      </Container>
-    </Box>
-  );
+    let cancelled = false;
+    setStart(''); setSlots([]); setLoadingSlots(false);
+    if (!type || !date) return undefined;
+    setLoadingSlots(true); setError('');
+    bookingService.getAvailableSlots(type.id, date)
+      .then(value => { if (!cancelled) setSlots(value); })
+      .catch(() => { if (!cancelled) setError('Unable to load availability. Please select the date again.'); })
+      .finally(() => { if (!cancelled) setLoadingSlots(false); });
+    return () => { cancelled = true; };
+  }, [type, date]);
+  return <Container maxWidth="sm" sx={{ py: 5 }}>
+    <Card sx={{ p: { xs: 2, sm: 4 } }}>
+      <Stack component="form" spacing={3} onSubmit={async event => {
+        event.preventDefault();
+        if (!type || !start) return;
+        setBusy(true); setError('');
+        try {
+          const result = await bookingService.createAppointment({ bookingTypeId: type.id, startTime: start, guestName: name, guestEmail: email });
+          setConfirmation(`Booking reference: ${result.id}. Your appointment is pending confirmation.`);
+          setStart('');
+          setSlots(await bookingService.getAvailableSlots(type.id, date));
+        } catch (err: any) {
+          setError(err?.response?.data?.message || 'Unable to book. Please retry.');
+          setStart('');
+        } finally { setBusy(false); }
+      }}>
+        <Typography variant="h4">{type?.title || 'Book an appointment'}</Typography>
+        {type && <Typography>{type.description} {type.durationMinutes} minutes. Times shown in {type.timeZone || 'UTC'}.</Typography>}
+        {error && <Alert severity="error">{error}</Alert>}
+        {confirmation && <Alert severity="success">{confirmation}</Alert>}
+        <TextField label="Date" type="date" value={date} disabled={!type || busy} onChange={event => { setDate(event.target.value); setConfirmation(''); }} InputLabelProps={{ shrink: true }} required />
+        {loadingSlots && <Typography role="status">Loading availability…</Typography>}
+        {date && !loadingSlots && !slots.length && !error && <Typography>No available appointments on this date.</Typography>}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          {slots.map(slot => <Button key={slot.start} type="button" disabled={busy} variant={start === slot.start ? 'contained' : 'outlined'} aria-pressed={start === slot.start} onClick={() => { setStart(slot.start); setConfirmation(''); }}>{slot.label}</Button>)}
+        </Box>
+        <TextField label="Your name" value={name} required inputProps={{ maxLength: 200 }} onChange={event => setName(event.target.value)} />
+        <TextField label="Email" type="email" value={email} required inputProps={{ maxLength: 254 }} onChange={event => setEmail(event.target.value)} />
+        <Button type="submit" variant="contained" disabled={busy || !start || !name.trim() || !email}>{busy ? 'Booking…' : 'Confirm booking'}</Button>
+      </Stack>
+    </Card>
+  </Container>;
 }

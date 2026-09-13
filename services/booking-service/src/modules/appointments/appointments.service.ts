@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
-import { addMinutes, format, startOfDay, endOfDay, isBefore, isAfter } from 'date-fns';
+import { availableStarts } from './domain/scheduling.js';
 import { AppointmentsRepository } from './repositories/appointments.repository.js';
 import { BookingTypesRepository } from '../booking-types/repositories/booking-types.repository.js';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
@@ -22,14 +22,7 @@ export class AppointmentsService {
       throw new BadRequestException('Booking type does not belong to the authenticated organization');
     }
 
-    const startTime = new Date(data.startTime);
-    const endTime = addMinutes(startTime, bookingType.durationMinutes);
-
-    return this.appointmentsRepository.create(orgId, {
-      ...data,
-      startTime,
-      endTime,
-    });
+    return this.appointmentsRepository.save(orgId, data);
   }
 
   async createPublic(data: CreateAppointmentDto) {
@@ -42,35 +35,18 @@ export class AppointmentsService {
     if (!bookingType) throw new NotFoundException('Booking type not found');
     if (!bookingType.isActive) throw new BadRequestException('Booking type is not active');
 
-    const startTime = new Date(data.startTime);
-    const endTime = addMinutes(startTime, bookingType.durationMinutes);
-
-    return this.appointmentsRepository.create(bookingType.orgId, {
-      ...data,
-      startTime,
-      endTime,
+    if (!data.guestName?.trim() || !data.guestEmail) throw new BadRequestException('Guest name and email are required.');
+    // Public callers cannot impersonate contacts or mark a booking completed.
+    return this.appointmentsRepository.save(bookingType.orgId, {
+      bookingTypeId: data.bookingTypeId, startTime: data.startTime,
+      notes: data.notes, status: 'PENDING', guestName: data.guestName.trim(), guestEmail: data.guestEmail.toLowerCase(),
     });
   }
 
   async findAll(orgId: string, contactId?: string) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
 
-    try {
-      return await this.appointmentsRepository.findMany(orgId, contactId);
-    } catch (errorWithInclude) {
-      // Keep the endpoint usable even if relational rows are partially inconsistent.
-      try {
-        return await this.appointmentsRepository.findManyWithoutRelations(orgId, contactId);
-      } catch (errorPlain) {
-        console.error('AppointmentsService.findAll failed', {
-          orgId,
-          contactId,
-          errorWithInclude: errorWithInclude instanceof Error ? errorWithInclude.message : String(errorWithInclude),
-          errorPlain: errorPlain instanceof Error ? errorPlain.message : String(errorPlain),
-        });
-        return [];
-      }
-    }
+    return this.appointmentsRepository.findMany(orgId, contactId);
   }
 
   async findOne(orgId: string, id: string) {
@@ -84,14 +60,7 @@ export class AppointmentsService {
 
   async update(orgId: string, id: string, data: UpdateAppointmentDto) {
     if (!orgId) throw new UnauthorizedException('Missing X-Org-Id header');
-    const { count } = await this.appointmentsRepository.updateMany(
-      orgId,
-      id,
-      data as Record<string, unknown>,
-    );
-
-    if (count === 0) throw new NotFoundException(`Appointment ${id} not found`);
-    return this.findOne(orgId, id);
+    return this.appointmentsRepository.save(orgId, data, id);
   }
 
   async getAvailableSlots(bookingTypeId: string, dateStr: string) {
@@ -99,50 +68,16 @@ export class AppointmentsService {
 
     if (!bookingType) throw new NotFoundException('Booking type not found');
 
-    const date = new Date(dateStr);
-    const dayOfWeek = date.getDay();
-    const dayAvailability = bookingType.availabilities.find(a => a.dayOfWeek === dayOfWeek);
-
-    if (!dayAvailability) return [];
-
-    // Get existing appointments for this day
-    const dayStart = startOfDay(date);
-    const dayEnd = endOfDay(date);
-
-    const existingAppointments = await this.appointmentsRepository.findForDay(bookingTypeId, dayStart, dayEnd);
-
-    // Generate possible slots
-    const slots = [];
-    const [startH, startM] = dayAvailability.startTime.split(':').map(Number);
-    const [endH, endM] = dayAvailability.endTime.split(':').map(Number);
-
-    let currentSlot = new Date(date);
-    currentSlot.setHours(startH, startM, 0, 0);
-
-    const dayEndTime = new Date(date);
-    dayEndTime.setHours(endH, endM, 0, 0);
-
-    while (isBefore(addMinutes(currentSlot, bookingType.durationMinutes), dayEndTime) || 
-           format(addMinutes(currentSlot, bookingType.durationMinutes), 'HH:mm') === dayAvailability.endTime) {
-      
-      const slotEnd = addMinutes(currentSlot, bookingType.durationMinutes);
-      
-      // Check for overlap
-      const isBooked = existingAppointments.some(app => {
-        return (isBefore(currentSlot, app.endTime) && isAfter(slotEnd, app.startTime));
-      });
-
-      if (!isBooked) {
-        slots.push({
-          start: format(currentSlot, "yyyy-MM-dd'T'HH:mm:ssXXX"),
-          end: format(slotEnd, "yyyy-MM-dd'T'HH:mm:ssXXX"),
-          label: format(currentSlot, 'HH:mm')
-        });
-      }
-
-      currentSlot = addMinutes(currentSlot, bookingType.durationMinutes + bookingType.bufferMinutes);
-    }
-
-    return slots;
+    let slots: { start: string; end: string; label: string }[];
+    try { slots = availableStarts(bookingType, dateStr); }
+    catch { throw new BadRequestException('Invalid booking date or timezone'); }
+    if (!slots.length) return [];
+    const buffer = bookingType.bufferMinutes * 60000;
+    const existing = await this.appointmentsRepository.findForDay(bookingTypeId,
+      new Date(Date.parse(slots[0].start) - buffer),
+      new Date(Date.parse(slots[slots.length - 1].end) + buffer));
+    return slots.filter(slot => !existing.some(appointment =>
+      Date.parse(slot.start) < appointment.endTime.getTime() + buffer &&
+      Date.parse(slot.end) + buffer > appointment.startTime.getTime()));
   }
 }

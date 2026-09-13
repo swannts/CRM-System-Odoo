@@ -183,7 +183,8 @@ export class CrmService {
       priority: priorityMap[data?.priority] ?? data?.priority,
       date_deadline: data?.expectedCloseDate ?? data?.expectedClose ?? data?.date_deadline,
       description: data?.notes ?? data?.description,
-      type: data?.type ?? 'opportunity',
+      type: data?.type,
+      active: data?.active,
     };
 
     if (data?.partnerId || data?.customerId) {
@@ -194,7 +195,7 @@ export class CrmService {
   }
 
   async create(data: any) {
-    const id = await this.odooClient.execute(this.model, 'create', [this.mapOpportunityWritePayload(data)]);
+    const id = await this.odooClient.execute(this.model, 'create', [this.mapOpportunityWritePayload({ ...data, type: data?.type ?? 'opportunity' })]);
     return this.findOne(Number(id));
   }
 

@@ -1,12 +1,25 @@
 import { Type } from 'class-transformer';
 import {
   IsDateString,
+  IsEmail,
+  MaxLength,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
 } from 'class-validator';
 
 export class CreateAppointmentDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  guestName?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  guestEmail?: string;
+
   @IsString()
   bookingTypeId!: string;
 
@@ -22,7 +35,7 @@ export class CreateAppointmentDto {
   notes?: string;
 
   @IsOptional()
-  @IsString()
+  @IsIn(['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'])
   status?: string;
 
   @IsOptional()

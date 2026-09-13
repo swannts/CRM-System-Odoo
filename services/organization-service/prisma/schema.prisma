@@ -20,6 +20,7 @@ model Organization {
   updatedAt DateTime   @updatedAt @map("updated_at")
   locations Location[]
   memberships OrganizationMembership[]
+  invitations OrganizationInvitation[]
 
   @@map("organizations")
 }
@@ -109,4 +110,21 @@ model Habit {
   @@index([organizationId])
   @@index([userId])
   @@map("habits")
+}
+
+model OrganizationInvitation {
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  email          String
+  role           String
+  tokenHash      String   @unique
+  invitedBy      String
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  acceptedBy     String?
+  acceptedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, email])
 }

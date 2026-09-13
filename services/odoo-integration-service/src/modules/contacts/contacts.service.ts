@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { OdooClientService } from '../odoo-base/odoo-client.service.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { CreateContactDto, UpdateContactDto } from './dto/contact.dto.js';
@@ -31,54 +31,43 @@ export class ContactsService {
   ];
 
   async import(file: Express.Multer.File) {
-    const content = file.buffer.toString();
-    const records = parse(content, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-    });
-
+    if (!file?.buffer || !file.originalname?.toLowerCase().endsWith('.csv')) throw new BadRequestException('Upload a CSV file.');
+    if (file.buffer.length > 5 * 1024 * 1024) throw new BadRequestException('CSV files must be 5 MB or smaller.');
+    let records: Record<string, string>[];
+    try {
+      records = parse(file.buffer.toString('utf8'), { columns: true, bom: true, skip_empty_lines: true, trim: true, max_record_size: 10000 });
+    } catch { throw new BadRequestException('Invalid CSV. Check headers, quotes, and column counts.'); }
+    if (!records.length || records.length > 5000) throw new BadRequestException('Import between 1 and 5000 contacts per file.');
     const results: any[] = [];
-    const chunkSize = 20;
-    const recordsArray = records as any[];
-
-    for (let i = 0; i < recordsArray.length; i += chunkSize) {
-      const chunk = recordsArray.slice(i, i + chunkSize);
-
-      const chunkPromises = chunk.map(async (record) => {
-        try {
-          const createDto: CreateContactDto = {
-            name:
-              record.Name || record.name || record.fullName || record.FullName,
-            email: record.Email || record.email,
-            phone: record.Phone || record.phone,
-            mobile: record.Mobile || record.mobile,
-            isCompany:
-              record.IsCompany === 'true' ||
-              record.isCompany === 'true' ||
-              record.IsCompany === true ||
-              false,
-            street: record.Street || record.street,
-            city: record.City || record.city,
-            vat: record.VAT || record.vat,
-          } as any;
-
-          if (createDto.name) {
-            const res = await this.create(createDto);
-            return { success: true, name: createDto.name, id: res };
-          }
-          return null;
-        } catch (error: any) {
-          return {
-            success: false,
-            name: record.name || record.Name || 'Unknown',
-            error: error.message,
-          };
+    const seenEmails = new Set<string>();
+    for (const [index, record] of records.entries()) {
+      const name = (record.Name || record.name || record.fullName || record.FullName || '').trim();
+      const email = (record.Email || record.email || '').trim().toLowerCase();
+      try {
+        if (!name || name.length > 200) throw new Error('Name is required and must be at most 200 characters.');
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Invalid email address.');
+        if (email && seenEmails.has(email)) {
+          results.push({ row: index + 2, name, success: false, skipped: true, error: 'Duplicate email in this file.' });
+          continue;
         }
-      });
-
-      const chunkResults = await Promise.all(chunkPromises);
-      results.push(...chunkResults.filter((r) => r !== null));
+        if (email) {
+          const existing = await this.odooClient.searchRead(this.model, [['email', '=ilike', email]], ['id'], { limit: 1 });
+          if (existing.length) {
+            results.push({ row: index + 2, name, success: false, skipped: true, error: 'A contact with this email already exists.' });
+            seenEmails.add(email);
+            continue;
+          }
+        }
+        const created = await this.create({ name, email: email || undefined,
+          phone: record.Phone || record.phone, mobile: record.Mobile || record.mobile,
+          is_company: String(record.IsCompany || record.is_company || record.isCompany).toLowerCase() === 'true',
+          street: record.Street || record.street, city: record.City || record.city, vat: record.VAT || record.vat,
+        });
+        if (email) seenEmails.add(email);
+        results.push({ row: index + 2, name, success: true, id: created });
+      } catch (error: any) {
+        results.push({ row: index + 2, name, success: false, error: error.message || 'Unable to import row.' });
+      }
     }
     return results;
   }

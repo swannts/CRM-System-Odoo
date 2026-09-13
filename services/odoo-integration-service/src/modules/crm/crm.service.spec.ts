@@ -99,6 +99,15 @@ describe('CrmService', () => {
     );
   });
 
+  it('preserves lead type on partial updates and forwards explicit loss archival', async () => {
+    const execute = jest.fn().mockResolvedValue(true);
+    const searchRead = jest.fn().mockResolvedValue([{ id: 42, type: 'lead', active: false }]);
+    const service = makeService({ execute, searchRead });
+    await service.update(42, { active: false });
+    expect(execute).toHaveBeenCalledWith('crm.lead', 'write', [[42], { active: false }]);
+    expect(execute.mock.calls[0][2][1]).not.toHaveProperty('type');
+  });
+
   it('validates activity payloads and falls back to an available Odoo activity type', async () => {
     const execute = jest.fn().mockResolvedValue(99);
     const searchRead = jest.fn()

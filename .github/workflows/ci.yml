@@ -7,9 +7,19 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "24"
 
 jobs:
+  mvp-core-tests:
+    name: MVP scheduling and pagination tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: node --experimental-strip-types --test services/booking-service/tests/scheduling.test.mjs services/api-router-service/tests/pagination.test.mjs
+
   frontend-build:
     name: Frontend Build (micro-app)
     runs-on: ubuntu-latest

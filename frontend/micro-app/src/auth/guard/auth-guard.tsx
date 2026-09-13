@@ -24,7 +24,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   const searchParams = useSearchParams();
 
-  const { authenticated, loading } = useAuthContext();
+  const { authenticated, loading, user } = useAuthContext();
 
   const [isChecking, setIsChecking] = useState(true);
 
@@ -58,6 +58,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
       const href = `${signInPath}?${createQueryString('returnTo', pathname)}`;
 
       router.replace(href);
+      return;
+    }
+
+    if (CONFIG.auth.method === 'keycloak' && !user?.org_id && pathname.startsWith('/dashboard')) {
+      router.replace('/workspace-setup/');
       return;
     }
 

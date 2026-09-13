@@ -20,18 +20,23 @@ export class BookingTypesService {
   async findOne(idOrSlug: string) {
     const bookingType = await this.bookingTypesRepository.findByIdOrSlug(idOrSlug);
 
-    if (!bookingType) {
+    if (!bookingType || !bookingType.isActive) {
       throw new NotFoundException(`Booking type ${idOrSlug} not found`);
     }
 
-    return bookingType;
+    const { orgId: _orgId, ...publicType } = bookingType;
+    return publicType;
   }
 
-  async update(id: string, data: UpdateBookingTypeDto) {
+  async update(orgId: string, id: string, data: UpdateBookingTypeDto) {
+    const existing = await this.bookingTypesRepository.findById(id);
+    if (!existing || existing.orgId !== orgId) throw new NotFoundException('Booking type not found');
     return this.bookingTypesRepository.update(id, data);
   }
 
-  async remove(id: string) {
+  async remove(orgId: string, id: string) {
+    const existing = await this.bookingTypesRepository.findById(id);
+    if (!existing || existing.orgId !== orgId) throw new NotFoundException('Booking type not found');
     return this.bookingTypesRepository.remove(id);
   }
 }

@@ -72,9 +72,7 @@ export async function unarchiveNotifications(ids?: string[]) {
 }
 
 export async function markNotificationSeen(id: string) {
-  const userId = typeof window !== 'undefined' ? sessionStorage.getItem('userId') : null;
-  if (!userId) return;
-  await axios.post(`/api/notification/mark-seen/${id}/${userId}`);
+  await axios.post(`/api/notification/mark-seen/${encodeURIComponent(id)}`);
 }
 
 export const notificationService = {

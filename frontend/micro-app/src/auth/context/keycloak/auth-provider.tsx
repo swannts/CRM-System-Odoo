@@ -54,10 +54,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const fetchMembership = useCallback(async (accessToken?: string | null) => {
     if (typeof window === 'undefined' || !accessToken) return null;
     try {
-      let orgId: string | null = null;
+      let orgId: string | null = sessionStorage.getItem(ORG_ID_KEY) || null;
       try {
         const payload = JSON.parse(atob(accessToken.split('.')[1] || ''));
-        orgId = payload?.org_id || null;
+        orgId = orgId || payload?.org_id || null;
       } catch {
         // Best-effort token parse only.
       }
@@ -95,7 +95,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const tokenParsed = keycloak.tokenParsed as any;
       const platformRoles = extractPlatformRolesFromToken(tokenParsed, CONFIG.keycloak.clientId);
       const platformRole = getHighestPriorityRole(platformRoles);
-      const membership = tokenParsed?.org_id ? await fetchMembership(keycloak.token) : null;
+      const selectedOrgId = sessionStorage.getItem(ORG_ID_KEY) || tokenParsed?.org_id || null;
+      const membership = selectedOrgId ? await fetchMembership(keycloak.token) : null;
       const orgRole = membership?.role ?? null;
 
       const user = {
@@ -106,7 +107,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         accessToken: keycloak.token,
         refreshToken: keycloak.refreshToken,
         role: orgRole || platformRole || null,
-        org_id: tokenParsed?.org_id,
+        org_id: selectedOrgId,
         orgRole,
         platformRole,
         platformRoles,

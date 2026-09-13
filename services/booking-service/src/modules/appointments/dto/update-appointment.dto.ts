@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsDateString,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -24,7 +25,7 @@ export class UpdateAppointmentDto {
   notes?: string;
 
   @IsOptional()
-  @IsString()
+  @IsIn(['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'])
   status?: string;
 
   @IsOptional()

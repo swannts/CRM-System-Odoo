@@ -51,6 +51,7 @@ export const navData: NavSection[] = [
   {
     subheader: 'Management',
     items: [
+      { title: 'Workspaces and invitations', path: '/workspace-setup/', icon: ICONS.setting },
       { title: 'Overview', path: paths.dashboard.overview, icon: ICONS.dashboard },
       { title: 'Contacts', path: paths.dashboard.contacts, icon: ICONS.user },
       { title: 'Sales', path: paths.dashboard.sales, icon: ICONS.analytics },
